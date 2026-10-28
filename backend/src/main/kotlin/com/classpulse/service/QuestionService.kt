@@ -1,0 +1,227 @@
+package com.classpulse.service
+
+import com.classpulse.domain.Answer
+import com.classpulse.domain.Question
+import com.classpulse.domain.QuestionType
+import com.classpulse.domain.Role
+import com.classpulse.repository.AnswerRepository
+import com.classpulse.repository.QuestionRepository
+import com.classpulse.web.ApiException
+import com.classpulse.web.dto.*
+import com.fasterxml.jackson.core.type.TypeReference
+import com.fasterxml.jackson.databind.ObjectMapper
+import org.springframework.http.HttpStatus
+import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
+import java.time.Instant
+import java.util.Locale
+import kotlin.math.round
+
+@Service
+class QuestionService(
+    private val questionRepository: QuestionRepository,
+    private val answerRepository: AnswerRepository,
+    private val accessGuard: AccessGuard,
+    private val objectMapper: ObjectMapper,
+) {
+    private val optionListType = object : TypeReference<List<QuestionOptionDto>>() {}
+
+    @Transactional
+    fun create(courseId: Long, request: CreateQuestionRequest): QuestionDto {
+        val course = accessGuard.teacherCourse(courseId)
+        val type = request.type
+            ?: throw ApiException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "题型不能为空")
+        val deadline = request.deadlineAt
+            ?: throw ApiException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "截止时间不能为空")
+
+        var options = emptyList<QuestionOptionDto>()
+        val standardAnswer = when (type) {
+            QuestionType.SINGLE_CHOICE -> {
+                val texts = request.options.orEmpty().map { it.trim() }
+                if (texts.size !in 2..6 || texts.any { it.isBlank() }) {
+                    throw ApiException(HttpStatus.BAD_REQUEST, "INVALID_OPTIONS", "单选题需要 2-6 个非空选项")
+                }
+                if (texts.map { it.lowercase(Locale.ROOT) }.distinct().size != texts.size) {
+                    throw ApiException(HttpStatus.BAD_REQUEST, "INVALID_OPTIONS", "选项内容不能重复")
+                }
+                options = texts.mapIndexed { index, text ->
+                    QuestionOptionDto(key = ('A'.code + index).toChar().toString(), text = text)
+                }
+                val answer = request.correctAnswer.trim().uppercase(Locale.ROOT)
+                if (options.none { it.key == answer }) {
+                    throw ApiException(HttpStatus.BAD_REQUEST, "INVALID_ANSWER", "选择题参考答案应为有效选项字母")
+                }
+                answer
+            }
+
+            QuestionType.FILL_BLANK -> request.correctAnswer.trim()
+        }
+        val question = questionRepository.save(
+            Question(
+                course = course,
+                type = type,
+                prompt = request.prompt.trim(),
+                optionsJson = if (options.isEmpty()) null else objectMapper.writeValueAsString(options),
+                standardAnswer = standardAnswer,
+                deadlineAt = deadline,
+                createdAt = Instant.now(),
+            ),
+        )
+        return question.toDto()
+    }
+
+    @Transactional(readOnly = true)
+    fun list(courseId: Long): List<QuestionDto> {
+        accessGuard.readableCourse(courseId)
+        return questionRepository.findByCourseIdOrderByCreatedAtDesc(courseId).map { it.toDto() }
+    }
+
+    @Transactional
+    fun submit(questionId: Long, request: AnswerRequest): AnswerResultDto {
+        val principal = accessGuard.requireStudent()
+        val question = findQuestion(questionId)
+        val courseId = requireNotNull(question.course.id)
+        accessGuard.ensureStudentMember(courseId, principal.id)
+        val now = Instant.now()
+        if (!now.isBefore(question.deadlineAt)) {
+            throw ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "QUESTION_CLOSED", "本题已截止，无法作答")
+        }
+        if (answerRepository.findByQuestionIdAndStudentId(questionId, principal.id) != null) {
+            throw ApiException(HttpStatus.CONFLICT, "ALREADY_ANSWERED", "本题已提交，不能重复作答")
+        }
+        val normalized = if (question.type == QuestionType.SINGLE_CHOICE) {
+            request.answer.trim().uppercase(Locale.ROOT)
+        } else {
+            request.answer.trim()
+        }
+        if (normalized.isBlank()) {
+            throw ApiException(HttpStatus.BAD_REQUEST, "EMPTY_ANSWER", "答案不能为空")
+        }
+        if (question.type == QuestionType.SINGLE_CHOICE) {
+            val keys = options(question).map { it.key }
+            if (normalized !in keys) {
+                throw ApiException(HttpStatus.BAD_REQUEST, "INVALID_ANSWER", "请选择有效选项")
+            }
+        }
+        val correct = if (question.type == QuestionType.SINGLE_CHOICE) {
+            normalized == question.standardAnswer
+        } else {
+            normalized.equals(question.standardAnswer.trim(), ignoreCase = true)
+        }
+        val answer = answerRepository.save(
+            Answer(
+                question = question,
+                student = accessGuard.currentUser(),
+                answerText = normalized,
+                isCorrect = correct,
+                submittedAt = now,
+            ),
+        )
+        return AnswerResultDto(
+            questionId = questionId,
+            answer = answer.answerText,
+            isCorrect = answer.isCorrect,
+            correctAnswer = question.standardAnswer,
+            submittedAt = answer.submittedAt,
+        )
+    }
+
+    @Transactional(readOnly = true)
+    fun stats(questionId: Long): QuestionStatsDto {
+        accessGuard.requireTeacher()
+        val question = findQuestion(questionId)
+        accessGuard.teacherCourse(requireNotNull(question.course.id))
+        val answers = answerRepository.findByQuestionIdOrderBySubmittedAtAsc(questionId)
+        val details = answers.map { answer ->
+            AnswerDetailDto(
+                studentId = requireNotNull(answer.student.id),
+                studentNo = answer.student.username,
+                studentName = answer.student.name,
+                answer = answer.answerText,
+                isCorrect = answer.isCorrect,
+                submittedAt = answer.submittedAt,
+            )
+        }
+        val distribution = if (question.type == QuestionType.SINGLE_CHOICE) {
+            options(question).map { option ->
+                OptionDistributionDto(
+                    key = option.key,
+                    text = option.text,
+                    count = answers.count { it.answerText == option.key }.toLong(),
+                )
+            }
+        } else {
+            emptyList()
+        }
+        val correctCount = answers.count { it.isCorrect }
+        val rate = if (answers.isEmpty()) 0.0 else correctCount.toDouble() / answers.size
+        val conclusion = if (answers.isEmpty()) {
+            "本题暂无学生提交。"
+        } else {
+            "本题共 ${answers.size} 人提交，$correctCount 人正确，正确率 ${percent(rate)}（按实际作答人数计算）。"
+        }
+        return QuestionStatsDto(
+            question = question.toDto(),
+            answerDetails = details,
+            optionDistribution = distribution,
+            conclusion = conclusion,
+        )
+    }
+
+    private fun findQuestion(id: Long): Question = questionRepository.findById(id).orElseThrow {
+        ApiException(HttpStatus.NOT_FOUND, "QUESTION_NOT_FOUND", "题目不存在")
+    }
+
+    private fun options(question: Question): List<QuestionOptionDto> {
+        val json = question.optionsJson ?: return emptyList()
+        return objectMapper.readValue(json, optionListType)
+    }
+
+    private fun Question.toDto(): QuestionDto {
+        val principal = accessGuard.principal()
+        val id = requireNotNull(id)
+        val courseId = requireNotNull(course.id)
+        val parsedOptions = options(this)
+        return if (principal.role == Role.TEACHER) {
+            val submissions = answerRepository.countByQuestionId(id)
+            val correct = answerRepository.countByQuestionIdAndIsCorrectTrue(id)
+            QuestionDto(
+                id = id,
+                courseId = courseId,
+                type = type,
+                prompt = prompt,
+                options = parsedOptions,
+                deadlineAt = deadlineAt,
+                createdAt = createdAt,
+                submissionCount = submissions,
+                correctCount = correct,
+                correctRate = if (submissions == 0L) 0.0 else correct.toDouble() / submissions,
+                answered = false,
+                myAnswer = null,
+                myIsCorrect = null,
+                correctAnswer = standardAnswer,
+            )
+        } else {
+            val answer = answerRepository.findByQuestionIdAndStudentId(id, principal.id)
+            QuestionDto(
+                id = id,
+                courseId = courseId,
+                type = type,
+                prompt = prompt,
+                options = parsedOptions,
+                deadlineAt = deadlineAt,
+                createdAt = createdAt,
+                submissionCount = null,
+                correctCount = null,
+                correctRate = null,
+                answered = answer != null,
+                myAnswer = answer?.answerText,
+                myIsCorrect = answer?.isCorrect,
+                correctAnswer = if (answer != null) standardAnswer else null,
+            )
+        }
+    }
+
+    private fun percent(rate: Double): String =
+        String.format(Locale.CHINA, "%.1f%%", round(rate * 1000) / 10)
+}

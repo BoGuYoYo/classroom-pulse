@@ -1,0 +1,14 @@
+spring:
+  jpa:
+    properties:
+      hibernate:
+        format_sql: false
+
+app:
+  jwt:
+    require-configured: true
+
+logging:
+  level:
+    org.hibernate.SQL: WARN
+    org.springframework.web: INFO

@@ -1,0 +1,28 @@
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+deploy/.env
+deploy/certs/
+deploy/backups/
+.tmp/
+*.jks
+*.keystore
+
+# Build and runtime data
+**/build/
+**/.gradle/
+**/.kotlin/
+backend/data/
+android/local.properties
+android/.idea/
+artifacts/
+*.apk
+*.apk.idsig
+*.log
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.idea/
+*.iml
