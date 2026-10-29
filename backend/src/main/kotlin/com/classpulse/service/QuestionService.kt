@@ -36,10 +36,10 @@ class QuestionService(
 
         var options = emptyList<QuestionOptionDto>()
         val standardAnswer = when (type) {
-            QuestionType.SINGLE_CHOICE -> {
+            QuestionType.SINGLE_CHOICE, QuestionType.MULTIPLE_CHOICE -> {
                 val texts = request.options.orEmpty().map { it.trim() }
                 if (texts.size !in 2..6 || texts.any { it.isBlank() }) {
-                    throw ApiException(HttpStatus.BAD_REQUEST, "INVALID_OPTIONS", "单选题需要 2-6 个非空选项")
+                    throw ApiException(HttpStatus.BAD_REQUEST, "INVALID_OPTIONS", "选择题需要 2-6 个非空选项")
                 }
                 if (texts.map { it.lowercase(Locale.ROOT) }.distinct().size != texts.size) {
                     throw ApiException(HttpStatus.BAD_REQUEST, "INVALID_OPTIONS", "选项内容不能重复")
@@ -47,11 +47,20 @@ class QuestionService(
                 options = texts.mapIndexed { index, text ->
                     QuestionOptionDto(key = ('A'.code + index).toChar().toString(), text = text)
                 }
-                val answer = request.correctAnswer.trim().uppercase(Locale.ROOT)
-                if (options.none { it.key == answer }) {
+                val answerKeys = choiceKeys(request.correctAnswer)
+                if (type == QuestionType.SINGLE_CHOICE && answerKeys.size != 1) {
+                    throw ApiException(HttpStatus.BAD_REQUEST, "INVALID_ANSWER", "单选题需要且只能有一个正确答案")
+                }
+                if (type == QuestionType.MULTIPLE_CHOICE && answerKeys.size < 2) {
+                    throw ApiException(HttpStatus.BAD_REQUEST, "INVALID_ANSWER", "多选题至少需要两个正确答案")
+                }
+                if (answerKeys.distinct().size != answerKeys.size) {
+                    throw ApiException(HttpStatus.BAD_REQUEST, "INVALID_ANSWER", "参考答案不能重复")
+                }
+                if (answerKeys.any { key -> options.none { it.key == key } }) {
                     throw ApiException(HttpStatus.BAD_REQUEST, "INVALID_ANSWER", "选择题参考答案应为有效选项字母")
                 }
-                answer
+                options.filter { it.key in answerKeys }.joinToString(",") { it.key }
             }
 
             QuestionType.FILL_BLANK -> request.correctAnswer.trim()
@@ -89,10 +98,23 @@ class QuestionService(
         if (answerRepository.findByQuestionIdAndStudentId(questionId, principal.id) != null) {
             throw ApiException(HttpStatus.CONFLICT, "ALREADY_ANSWERED", "本题已提交，不能重复作答")
         }
-        val normalized = if (question.type == QuestionType.SINGLE_CHOICE) {
-            request.answer.trim().uppercase(Locale.ROOT)
-        } else {
-            request.answer.trim()
+        val normalized = when (question.type) {
+            QuestionType.SINGLE_CHOICE -> request.answer.trim().uppercase(Locale.ROOT)
+            QuestionType.MULTIPLE_CHOICE -> {
+                val selectedKeys = choiceKeys(request.answer)
+                if (selectedKeys.isEmpty()) {
+                    throw ApiException(HttpStatus.BAD_REQUEST, "EMPTY_ANSWER", "答案不能为空")
+                }
+                if (selectedKeys.distinct().size != selectedKeys.size) {
+                    throw ApiException(HttpStatus.BAD_REQUEST, "INVALID_ANSWER", "不能重复选择同一选项")
+                }
+                val optionKeys = options(question).map { it.key }
+                if (selectedKeys.any { it !in optionKeys }) {
+                    throw ApiException(HttpStatus.BAD_REQUEST, "INVALID_ANSWER", "请选择有效选项")
+                }
+                optionKeys.filter { it in selectedKeys }.joinToString(",")
+            }
+            QuestionType.FILL_BLANK -> request.answer.trim()
         }
         if (normalized.isBlank()) {
             throw ApiException(HttpStatus.BAD_REQUEST, "EMPTY_ANSWER", "答案不能为空")
@@ -103,10 +125,9 @@ class QuestionService(
                 throw ApiException(HttpStatus.BAD_REQUEST, "INVALID_ANSWER", "请选择有效选项")
             }
         }
-        val correct = if (question.type == QuestionType.SINGLE_CHOICE) {
-            normalized == question.standardAnswer
-        } else {
-            normalized.equals(question.standardAnswer.trim(), ignoreCase = true)
+        val correct = when (question.type) {
+            QuestionType.FILL_BLANK -> normalized.equals(question.standardAnswer.trim(), ignoreCase = true)
+            else -> normalized == question.standardAnswer
         }
         val answer = answerRepository.save(
             Answer(
@@ -142,12 +163,12 @@ class QuestionService(
                 submittedAt = answer.submittedAt,
             )
         }
-        val distribution = if (question.type == QuestionType.SINGLE_CHOICE) {
+        val distribution = if (question.type != QuestionType.FILL_BLANK) {
             options(question).map { option ->
                 OptionDistributionDto(
                     key = option.key,
                     text = option.text,
-                    count = answers.count { it.answerText == option.key }.toLong(),
+                    count = answers.count { option.key in it.answerText.split(',') }.toLong(),
                 )
             }
         } else {
@@ -171,6 +192,11 @@ class QuestionService(
     private fun findQuestion(id: Long): Question = questionRepository.findById(id).orElseThrow {
         ApiException(HttpStatus.NOT_FOUND, "QUESTION_NOT_FOUND", "题目不存在")
     }
+
+    private fun choiceKeys(raw: String): List<String> =
+        raw.split(',')
+            .map { it.trim().uppercase(Locale.ROOT) }
+            .filter { it.isNotEmpty() }
 
     private fun options(question: Question): List<QuestionOptionDto> {
         val json = question.optionsJson ?: return emptyList()

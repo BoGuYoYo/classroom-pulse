@@ -771,7 +771,7 @@ private fun StudentQuestionCard(
     question: Question,
     onAnswer: (Long, String, (String?) -> Unit) -> Unit,
 ) {
-    var selectedKey by rememberSaveable(question.id) { mutableStateOf("") }
+    var selectedKeys by remember(question.id) { mutableStateOf(emptySet<String>()) }
     var fillAnswer by rememberSaveable(question.id) { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     var submitting by remember { mutableStateOf(false) }
@@ -846,8 +846,16 @@ private fun StudentQuestionCard(
             }
         } else if (active) {
             if (question.isChoice) {
+                if (question.isMultipleChoice) {
+                    Text(
+                        "可多选；选出全部正确项才计分。",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = Muted,
+                        modifier = Modifier.padding(bottom = 5.dp),
+                    )
+                }
                 question.options.forEach { option ->
-                    val selected = selectedKey == option.key
+                    val selected = option.key in selectedKeys
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -859,7 +867,14 @@ private fun StudentQuestionCard(
                                 if (selected) Teal else Color.Transparent,
                                 RoundedCornerShape(13.dp),
                             )
-                            .clickable { selectedKey = option.key; error = null }
+                            .clickable {
+                                selectedKeys = if (question.isMultipleChoice) {
+                                    if (selected) selectedKeys - option.key else selectedKeys + option.key
+                                } else {
+                                    setOf(option.key)
+                                }
+                                error = null
+                            }
                             .padding(horizontal = 12.dp, vertical = 11.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -901,9 +916,13 @@ private fun StudentQuestionCard(
                 PrimaryButton(
                     text = if (submitting) "提交中" else "提交答案",
                     onClick = {
-                        val answer = if (question.isChoice) selectedKey else fillAnswer
+                        val answer = if (question.isChoice) {
+                            selectedKeys.sorted().joinToString(",")
+                        } else {
+                            fillAnswer
+                        }
                         if (answer.isBlank()) {
-                            error = if (question.isChoice) "请选择一个选项" else "请填写答案"
+                            error = if (question.isMultipleChoice) "请至少选择一个选项" else if (question.isChoice) "请选择一个选项" else "请填写答案"
                             return@PrimaryButton
                         }
                         submitting = true

@@ -113,7 +113,8 @@ data class Question(
     val myIsCorrect: Boolean? = null,
     val correctAnswer: String? = null,
 ) {
-    val isChoice: Boolean get() = type == "SINGLE_CHOICE"
+    val isChoice: Boolean get() = type == "SINGLE_CHOICE" || type == "MULTIPLE_CHOICE"
+    val isMultipleChoice: Boolean get() = type == "MULTIPLE_CHOICE"
 }
 
 data class CreateQuestionRequest(

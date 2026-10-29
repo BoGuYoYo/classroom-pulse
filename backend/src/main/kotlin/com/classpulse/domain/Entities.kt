@@ -5,7 +5,7 @@ import java.time.Instant
 
 enum class Role { STUDENT, TEACHER }
 
-enum class QuestionType { SINGLE_CHOICE, FILL_BLANK }
+enum class QuestionType { SINGLE_CHOICE, MULTIPLE_CHOICE, FILL_BLANK }
 
 enum class AttendanceStatus { PRESENT }
 

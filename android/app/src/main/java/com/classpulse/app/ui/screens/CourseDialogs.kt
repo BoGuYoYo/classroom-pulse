@@ -29,6 +29,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.FileProvider
 import coil.compose.AsyncImage
 import com.classpulse.app.data.model.CreateAssignmentRequest
@@ -128,210 +130,306 @@ fun CreateQuestionDialog(
     onDismiss: () -> Unit,
     onSubmit: (CreateQuestionRequest, (String?) -> Unit) -> Unit,
 ) {
-    var choiceType by rememberSaveable { mutableStateOf(true) }
+    var questionType by rememberSaveable { mutableStateOf("SINGLE_CHOICE") }
     var prompt by rememberSaveable { mutableStateOf("") }
     var options by remember { mutableStateOf(listOf("", "", "", "")) }
-    var correctKey by rememberSaveable { mutableStateOf("A") }
+    var correctKeys by remember { mutableStateOf(setOf("A")) }
     var fillAnswer by rememberSaveable { mutableStateOf("") }
     var deadlineMinutes by rememberSaveable { mutableLongStateOf(24 * 60L) }
     var error by remember { mutableStateOf<String?>(null) }
     var submitting by remember { mutableStateOf(false) }
+    val isChoice = questionType != "FILL_BLANK"
+    val isMultiple = questionType == "MULTIPLE_CHOICE"
     val presetMinutes = listOf(15L to "15 分钟", 30L to "30 分钟", 60L to "1 小时", 1440L to "1 天", 4320L to "3 天")
 
-    AlertDialog(
+    Dialog(
         onDismissRequest = { if (!submitting) onDismiss() },
-        shape = RoundedCornerShape(26.dp),
-        containerColor = Cream,
-        title = {
-            Column {
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth(0.94f)
+                .fillMaxHeight(0.88f)
+                .imePadding(),
+            shape = RoundedCornerShape(26.dp),
+            color = Cream,
+            tonalElevation = 8.dp,
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
+            ) {
                 Text("发布课堂问题", style = MaterialTheme.typography.headlineMedium, color = Ink)
                 Spacer(Modifier.height(4.dp))
-                Text("系统按参考答案自动判分", style = MaterialTheme.typography.bodySmall, color = Muted)
-            }
-        },
-        text = {
-            Column(
-                Modifier
-                    .verticalScroll(rememberScrollState())
-                    .heightIn(max = 500.dp),
-            ) {
-                SegmentedChoice(
-                    options = listOf(true to "单选题", false to "填空题"),
-                    selected = choiceType,
-                    onSelect = { choiceType = it; error = null },
-                )
-                Spacer(Modifier.height(14.dp))
-                ClassPulseField(
-                    value = prompt,
-                    onValueChange = { prompt = it; error = null },
-                    label = "题干",
-                    placeholder = if (choiceType) "输入选择题题干" else "输入填空题题干",
-                    leadingIcon = { Icon(Icons.AutoMirrored.Outlined.HelpOutline, null, tint = Teal) },
-                    singleLine = false,
-                    minLines = 2,
-                )
-                Spacer(Modifier.height(14.dp))
-                if (choiceType) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column {
-                            Text("选项", style = MaterialTheme.typography.titleSmall, color = Ink)
+                Text("系统按参考答案自动判分；多选题全对才计分", style = MaterialTheme.typography.bodySmall, color = Muted)
+                Spacer(Modifier.height(12.dp))
+
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState()),
+                ) {
+                    SegmentedChoice(
+                        options = listOf(
+                            "SINGLE_CHOICE" to "单选题",
+                            "MULTIPLE_CHOICE" to "多选题",
+                            "FILL_BLANK" to "填空题",
+                        ),
+                        selected = questionType,
+                        onSelect = { selected ->
+                            questionType = selected
+                            error = null
+                            if (selected == "SINGLE_CHOICE" && correctKeys.size != 1) {
+                                correctKeys = setOf(correctKeys.firstOrNull() ?: "A")
+                            }
+                        },
+                    )
+                    Spacer(Modifier.height(14.dp))
+                    ClassPulseField(
+                        value = prompt,
+                        onValueChange = { prompt = it; error = null },
+                        label = "题干",
+                        placeholder = if (isChoice) "输入选择题题干" else "输入填空题题干",
+                        leadingIcon = { Icon(Icons.AutoMirrored.Outlined.HelpOutline, null, tint = Teal) },
+                        singleLine = false,
+                        minLines = 2,
+                    )
+                    Spacer(Modifier.height(14.dp))
+                    if (isChoice) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column {
+                                Text("选项", style = MaterialTheme.typography.titleSmall, color = Ink)
+                                Text(
+                                    if (isMultiple) "点击字母选择正确项，可多选" else "点击左侧字母设为正确答案",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = Muted,
+                                )
+                            }
+                            if (options.size < 6) {
+                                TextButton(onClick = { options = options + "" }) {
+                                    Icon(Icons.Outlined.Add, null, modifier = Modifier.size(16.dp))
+                                    Text("增加")
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(4.dp))
+                        options.forEachIndexed { index, value ->
+                            val key = ('A'.code + index).toChar().toString()
+                            val selected = key in correctKeys
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(34.dp)
+                                        .clip(CircleShape)
+                                        .background(if (selected) Teal else Paper)
+                                        .clickable {
+                                            correctKeys = if (isMultiple) {
+                                                if (selected) correctKeys - key else correctKeys + key
+                                            } else {
+                                                setOf(key)
+                                            }
+                                            error = null
+                                        }
+                                        .padding(1.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Text(
+                                        key,
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = if (selected) Cream else InkSoft,
+                                    )
+                                }
+                                Spacer(Modifier.width(8.dp))
+                                ClassPulseField(
+                                    value = value,
+                                    onValueChange = { newValue ->
+                                        options = options.toMutableList().also { it[index] = newValue }
+                                        error = null
+                                    },
+                                    label = "选项 $key",
+                                    modifier = Modifier.weight(1f),
+                                )
+                                if (options.size > 2) {
+                                    IconButton(onClick = {
+                                        options = options.toMutableList().also { it.removeAt(index) }
+                                        val validKeys = options.indices
+                                            .map { ('A'.code + it).toChar().toString() }
+                                            .toSet()
+                                        correctKeys = correctKeys.filter { it in validKeys }.toSet()
+                                        if (questionType == "SINGLE_CHOICE" && correctKeys.isEmpty()) {
+                                            correctKeys = setOf("A")
+                                        }
+                                    }) {
+                                        Icon(Icons.Outlined.Close, null, tint = Muted, modifier = Modifier.size(17.dp))
+                                    }
+                                }
+                            }
+                        }
+                        Spacer(Modifier.height(10.dp))
+                        StatusBadge(
+                            text = "正确答案 ${correctKeys.sorted().joinToString(",").ifBlank { "未选择" }}",
+                            containerColor = Mint,
+                            contentColor = TealDeep,
+                            dotColor = Teal,
+                        )
+                        if (isMultiple) {
+                            Spacer(Modifier.height(6.dp))
                             Text(
-                                "点击左侧字母设为正确答案",
-                                style = MaterialTheme.typography.labelMedium,
+                                "至少选择两个正确项；学生提交的选项集合与正确答案完全一致才计分。",
+                                style = MaterialTheme.typography.bodySmall,
                                 color = Muted,
                             )
                         }
-                        if (options.size < 6) {
-                            TextButton(onClick = { options = options + "" }) {
-                                Icon(Icons.Outlined.Add, null, modifier = Modifier.size(16.dp))
-                                Text("增加")
-                            }
-                        }
+                    } else {
+                        ClassPulseField(
+                            value = fillAnswer,
+                            onValueChange = { fillAnswer = it; error = null },
+                            label = "参考答案",
+                            placeholder = "例如：O(n log n)",
+                            leadingIcon = { Icon(Icons.Outlined.Check, null, tint = Teal) },
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            "比较时去除首尾空格，并忽略英文字母大小写。",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Muted,
+                        )
                     }
-                    Spacer(Modifier.height(4.dp))
-                    options.forEachIndexed { index, value ->
-                        val key = ('A'.code + index).toChar().toString()
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(34.dp)
-                                    .clip(CircleShape)
-                                    .background(if (correctKey == key) Teal else Paper)
-                                    .clickable { correctKey = key }
-                                    .padding(1.dp),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Text(
-                                    key,
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = if (correctKey == key) Cream else InkSoft,
-                                )
-                            }
-                            Spacer(Modifier.width(8.dp))
-                            ClassPulseField(
-                                value = value,
-                                onValueChange = { newValue ->
-                                    options = options.toMutableList().also { it[index] = newValue }
-                                    error = null
-                                },
-                                label = "选项 $key",
-                                modifier = Modifier.weight(1f),
-                            )
-                            if (options.size > 2) {
-                                IconButton(onClick = {
-                                    options = options.toMutableList().also { it.removeAt(index) }
-                                    if (correctKey !in options.indices.map { ('A'.code + it).toChar().toString() }) {
-                                        correctKey = "A"
-                                    }
-                                }) {
-                                    Icon(Icons.Outlined.Close, null, tint = Muted, modifier = Modifier.size(17.dp))
+                    Spacer(Modifier.height(18.dp))
+                    Text("作答截止", style = MaterialTheme.typography.titleSmall, color = Ink)
+                    Spacer(Modifier.height(8.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                        presetMinutes.chunked(3).forEach { row ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                row.forEach { (value, label) ->
+                                    FilterChip(
+                                        selected = deadlineMinutes == value,
+                                        onClick = { deadlineMinutes = value },
+                                        label = { Text(label) },
+                                        shape = CircleShape,
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = Ink,
+                                            selectedLabelColor = Cream,
+                                            containerColor = Paper,
+                                            labelColor = InkSoft,
+                                        ),
+                                    )
                                 }
                             }
                         }
                     }
-                    Spacer(Modifier.height(10.dp))
-                    StatusBadge(
-                        text = "正确答案 ${correctKey}",
-                        containerColor = Mint,
-                        contentColor = TealDeep,
-                        dotColor = Teal,
-                    )
-                } else {
-                    ClassPulseField(
-                        value = fillAnswer,
-                        onValueChange = { fillAnswer = it; error = null },
-                        label = "参考答案",
-                        placeholder = "例如：O(n log n)",
-                        leadingIcon = { Icon(Icons.Outlined.Check, null, tint = Teal) },
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        "比较时去除首尾空格，并忽略英文字母大小写。",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Muted,
-                    )
                 }
-                Spacer(Modifier.height(18.dp))
-                Text("作答截止", style = MaterialTheme.typography.titleSmall, color = Ink)
-                Spacer(Modifier.height(8.dp))
-                Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                    presetMinutes.chunked(3).forEach { row ->
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            row.forEach { (value, label) ->
-                                FilterChip(
-                                    selected = deadlineMinutes == value,
-                                    onClick = { deadlineMinutes = value },
-                                    label = { Text(label) },
-                                    shape = CircleShape,
-                                    colors = FilterChipDefaults.filterChipColors(
-                                        selectedContainerColor = Ink,
-                                        selectedLabelColor = Cream,
-                                        containerColor = Paper,
-                                        labelColor = InkSoft,
-                                    ),
-                                )
-                            }
-                        }
-                    }
-                }
+
                 InlineDialogError(error)
-            }
-        },
-        confirmButton = {
-            TextButton(
-                enabled = !submitting,
-                onClick = {
-                    if (prompt.isBlank()) {
-                        error = "请输入题干"
-                        return@TextButton
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextButton(onClick = onDismiss, enabled = !submitting) {
+                        Text("取消", color = Muted)
                     }
-                    val request = if (choiceType) {
-                        if (options.any { it.isBlank() }) {
-                            error = "请填写全部选项"
-                            return@TextButton
-                        }
-                        if (options.map { it.trim().lowercase() }.distinct().size != options.size) {
-                            error = "选项内容不能重复"
-                            return@TextButton
-                        }
-                        CreateQuestionRequest(
-                            type = "SINGLE_CHOICE",
-                            prompt = prompt.trim(),
-                            options = options.map { it.trim() },
-                            correctAnswer = correctKey,
-                            deadlineAt = Instant.now().plusSeconds(deadlineMinutes * 60).toString(),
-                        )
-                    } else {
-                        if (fillAnswer.isBlank()) {
-                            error = "请输入参考答案"
-                            return@TextButton
-                        }
-                        CreateQuestionRequest(
-                            type = "FILL_BLANK",
-                            prompt = prompt.trim(),
-                            options = null,
-                            correctAnswer = fillAnswer.trim(),
-                            deadlineAt = Instant.now().plusSeconds(deadlineMinutes * 60).toString(),
+                    Spacer(Modifier.width(6.dp))
+                    TextButton(
+                        enabled = !submitting,
+                        onClick = {
+                            submitQuestion(
+                                questionType = questionType,
+                                prompt = prompt,
+                                options = options,
+                                correctKeys = correctKeys,
+                                fillAnswer = fillAnswer,
+                                deadlineMinutes = deadlineMinutes,
+                                onError = { error = it },
+                                onSubmit = { request ->
+                                    submitting = true
+                                    onSubmit(request) { submitError ->
+                                        submitting = false
+                                        if (submitError == null) onDismiss() else error = submitError
+                                    }
+                                },
+                            )
+                        },
+                    ) {
+                        Text(
+                            if (submitting) "发布中…" else "发布问题",
+                            color = if (submitting) Muted else Teal,
+                            fontWeight = FontWeight.Bold,
                         )
                     }
-                    submitting = true
-                    onSubmit(request) { submitError ->
-                        submitting = false
-                        if (submitError == null) onDismiss() else error = submitError
-                    }
-                },
-            ) {
-                Text(if (submitting) "发布中…" else "发布问题", color = if (submitting) Muted else Teal, fontWeight = FontWeight.Bold)
+                }
             }
-        },
-        dismissButton = { TextButton(onClick = onDismiss, enabled = !submitting) { Text("取消", color = Muted) } },
+        }
+    }
+}
+
+private fun submitQuestion(
+    questionType: String,
+    prompt: String,
+    options: List<String>,
+    correctKeys: Set<String>,
+    fillAnswer: String,
+    deadlineMinutes: Long,
+    onError: (String) -> Unit,
+    onSubmit: (CreateQuestionRequest) -> Unit,
+) {
+    if (prompt.isBlank()) {
+        onError("请输入题干")
+        return
+    }
+    val deadlineAt = Instant.now().plusSeconds(deadlineMinutes * 60).toString()
+    if (questionType == "FILL_BLANK") {
+        if (fillAnswer.isBlank()) {
+            onError("请输入参考答案")
+            return
+        }
+        onSubmit(
+            CreateQuestionRequest(
+                type = questionType,
+                prompt = prompt.trim(),
+                options = null,
+                correctAnswer = fillAnswer.trim(),
+                deadlineAt = deadlineAt,
+            ),
+        )
+        return
+    }
+    if (options.any { it.isBlank() }) {
+        onError("请填写全部选项")
+        return
+    }
+    if (options.map { it.trim().lowercase() }.distinct().size != options.size) {
+        onError("选项内容不能重复")
+        return
+    }
+    if (correctKeys.isEmpty()) {
+        onError("请选择正确答案")
+        return
+    }
+    if (questionType == "MULTIPLE_CHOICE" && correctKeys.size < 2) {
+        onError("多选题至少需要两个正确答案")
+        return
+    }
+    if (questionType == "SINGLE_CHOICE" && correctKeys.size != 1) {
+        onError("单选题只能有一个正确答案")
+        return
+    }
+    onSubmit(
+        CreateQuestionRequest(
+            type = questionType,
+            prompt = prompt.trim(),
+            options = options.map { it.trim() },
+            correctAnswer = correctKeys.sorted().joinToString(","),
+            deadlineAt = deadlineAt,
+        ),
     )
 }
 
@@ -606,10 +704,10 @@ fun AssignmentSubmitDialog(
 }
 
 @Composable
-private fun SegmentedChoice(
-    options: List<Pair<Boolean, String>>,
-    selected: Boolean,
-    onSelect: (Boolean) -> Unit,
+private fun <T> SegmentedChoice(
+    options: List<Pair<T, String>>,
+    selected: T,
+    onSelect: (T) -> Unit,
 ) {
     Row(
         modifier = Modifier

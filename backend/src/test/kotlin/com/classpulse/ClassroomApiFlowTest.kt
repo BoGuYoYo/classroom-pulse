@@ -351,6 +351,61 @@ class ClassroomApiFlowTest {
     }
 
     @Test
+    fun multipleChoiceRequiresExactSelection() {
+        val invalid = postJson(
+            "/api/v1/courses/$courseId/questions",
+            mapOf(
+                "type" to QuestionType.MULTIPLE_CHOICE.name,
+                "prompt" to "至少两个正确项",
+                "options" to listOf("A", "B", "C", "D"),
+                "correctAnswer" to "A",
+                "deadlineAt" to Instant.now().plus(2, ChronoUnit.DAYS).toString(),
+            ),
+            teacherToken,
+        )
+        invalid.andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.code").value("INVALID_ANSWER"))
+
+        val created = postJson(
+            "/api/v1/courses/$courseId/questions",
+            mapOf(
+                "type" to QuestionType.MULTIPLE_CHOICE.name,
+                "prompt" to "选择全部正确项",
+                "options" to listOf("甲", "乙", "丙", "丁"),
+                "correctAnswer" to "C,A",
+                "deadlineAt" to Instant.now().plus(2, ChronoUnit.DAYS).toString(),
+            ),
+            teacherToken,
+        ).andExpect(status().isCreated)
+            .andExpect(jsonPath("$.data.type").value("MULTIPLE_CHOICE"))
+            .andExpect(jsonPath("$.data.correctAnswer").value("A,C"))
+            .andReturn().response.contentAsString
+        val questionId = objectMapper.readTree(created).path("data").path("id").asLong()
+
+        postJson(
+            "/api/v1/questions/$questionId/answers",
+            mapOf("answer" to "C,A"),
+            studentToken,
+        ).andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.answer").value("A,C"))
+            .andExpect(jsonPath("$.data.isCorrect").value(true))
+
+        postJson(
+            "/api/v1/questions/$questionId/answers",
+            mapOf("answer" to "A"),
+            secondStudentToken,
+        ).andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.isCorrect").value(false))
+
+        getJson("/api/v1/questions/$questionId/stats", teacherToken)
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.question.submissionCount").value(2))
+            .andExpect(jsonPath("$.data.question.correctCount").value(1))
+            .andExpect(jsonPath("$.data.optionDistribution[0].count").value(2))
+            .andExpect(jsonPath("$.data.optionDistribution[2].count").value(1))
+    }
+
+    @Test
     fun allUnansweredQuestionsShowNoAnswerData() {
         val created = postJson(
             "/api/v1/courses",

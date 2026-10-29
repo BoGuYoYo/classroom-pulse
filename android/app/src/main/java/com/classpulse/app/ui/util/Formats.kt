@@ -50,8 +50,11 @@ object Formats {
 
     fun role(role: String): String = if (role == "TEACHER") "教师" else "学生"
 
-    fun questionType(type: String): String =
-        if (type == "SINGLE_CHOICE") "单选题" else "填空题"
+    fun questionType(type: String): String = when (type) {
+        "SINGLE_CHOICE" -> "单选题"
+        "MULTIPLE_CHOICE" -> "多选题"
+        else -> "填空题"
+    }
 
     fun greeting(): String {
         val hour = java.time.LocalTime.now().hour
@@ -70,9 +73,14 @@ object Formats {
 
     fun answerDisplay(questionType: String, answer: String?, options: List<com.classpulse.app.data.model.QuestionOption>): String {
         if (answer.isNullOrBlank()) return "未作答"
-        if (questionType == "SINGLE_CHOICE") {
-            val option = options.firstOrNull { it.key == answer }
-            return if (option != null) "${option.key}. ${option.text}" else answer
+        if (questionType == "SINGLE_CHOICE" || questionType == "MULTIPLE_CHOICE") {
+            val labels = answer.split(',')
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .map { key ->
+                    options.firstOrNull { it.key == key }?.let { "$key. ${it.text}" } ?: key
+                }
+            return labels.joinToString("；").ifBlank { answer }
         }
         return answer
     }
