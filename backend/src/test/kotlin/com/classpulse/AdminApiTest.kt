@@ -1,14 +1,19 @@
 package com.classpulse
 
 import com.classpulse.domain.Answer
+import com.classpulse.domain.Assignment
 import com.classpulse.domain.Course
 import com.classpulse.domain.Question
 import com.classpulse.domain.QuestionType
+import com.classpulse.domain.Submission
 import com.classpulse.domain.User
 import com.classpulse.repository.AnswerRepository
+import com.classpulse.repository.AssignmentRepository
 import com.classpulse.repository.CourseRepository
 import com.classpulse.repository.QuestionRepository
+import com.classpulse.repository.SubmissionRepository
 import com.classpulse.repository.UserRepository
+import com.classpulse.service.StorageService
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import jakarta.servlet.http.Cookie
@@ -48,6 +53,9 @@ class AdminApiTest {
     @Autowired lateinit var userRepository: UserRepository
     @Autowired lateinit var questionRepository: QuestionRepository
     @Autowired lateinit var answerRepository: AnswerRepository
+    @Autowired lateinit var assignmentRepository: AssignmentRepository
+    @Autowired lateinit var submissionRepository: SubmissionRepository
+    @Autowired lateinit var storageService: StorageService
 
     private data class AdminSession(val cookie: Cookie, val csrf: String)
 
@@ -203,6 +211,29 @@ class AdminApiTest {
                 submittedAt = java.time.Instant.now(),
             ),
         )
+        val assignment = assignmentRepository.save(
+            Assignment(
+                course = courseEntity,
+                title = "管理员文件清理作业",
+                description = "清理测试",
+                deadlineAt = java.time.Instant.now().plusSeconds(3600),
+                createdAt = java.time.Instant.now(),
+            ),
+        )
+        val imagePath = storageService.store(courseId, byteArrayOf(1, 2, 3), "jpg")
+        val imageFile = storageService.resolve(imagePath)
+        submissionRepository.save(
+            Submission(
+                assignment = assignment,
+                student = studentEntity,
+                imagePath = imagePath,
+                originalFilename = "admin.jpg",
+                contentType = "image/jpeg",
+                fileSize = 3,
+                submittedAt = java.time.Instant.now(),
+                updatedAt = java.time.Instant.now(),
+            ),
+        )
 
         val deleted = adminDelete("/api/admin/courses/$courseId?expectedVersion=$version", session)
             .andExpect(status().isOk).andReturn().response.contentAsString
@@ -212,6 +243,7 @@ class AdminApiTest {
             .andExpect(jsonPath("$.data.members").value(1))
             .andExpect(jsonPath("$.data.questions").value(1))
             .andExpect(jsonPath("$.data.answers").value(1))
+            .andExpect(jsonPath("$.data.submissions").value(1))
         mockMvc.perform(
             delete("/api/admin/courses/$courseId/permanent")
                 .cookie(session.cookie)
@@ -221,6 +253,7 @@ class AdminApiTest {
         ).andExpect(status().isOk)
         assertEquals(0, questionRepository.count())
         assertEquals(0, answerRepository.count())
+        assertTrue(!Files.exists(imageFile))
         adminGet("/api/admin/courses", session)
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.data.length()").value(0))

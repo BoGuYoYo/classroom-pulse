@@ -6,6 +6,8 @@ import com.classpulse.service.StatsService
 import com.classpulse.service.StorageService
 import com.classpulse.web.ApiException
 import com.classpulse.web.dto.*
+import jakarta.persistence.EntityManager
+import jakarta.persistence.PersistenceContext
 import org.springframework.http.HttpStatus
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
@@ -31,6 +33,9 @@ class AdminService(
     private val storageService: StorageService,
     private val statsService: StatsService,
 ) {
+    @PersistenceContext
+    private lateinit var entityManager: EntityManager
+
     private val random = SecureRandom()
     private val alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
@@ -123,7 +128,7 @@ class AdminService(
             attendanceRecordRepository.deleteByStudentId(accountId)
             memberRepository.deleteByStudentId(accountId)
         }
-        userRepository.delete(user)
+        userRepository.deleteById(accountId)
         deleteFilesAfterCommit(files)
     }
 
@@ -333,7 +338,9 @@ class AdminService(
         submissionRepository.deleteByCourseId(courseId)
         assignmentRepository.deleteByCourseId(courseId)
         memberRepository.deleteByCourseId(courseId)
-        courseRepository.delete(course)
+        entityManager.flush()
+        entityManager.clear()
+        courseRepository.deleteById(courseId)
     }
 
     private fun deleteFilesAfterCommit(files: List<String>) {
