@@ -112,6 +112,9 @@ class AssignmentService(
                     fileSize = bytes.size.toLong()
                     this.note = note?.trim()?.ifBlank { null }
                     updatedAt = now
+                    score = null
+                    feedback = null
+                    gradedAt = null
                 }
             }
             val saved = submissionRepository.save(submission)
