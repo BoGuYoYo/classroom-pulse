@@ -29,7 +29,8 @@ class JwtAuthenticationFilter(
                 val claims = jwtService.parse(token)
                 val userId = claims.subject.toLong()
                 val user = userRepository.findById(userId).orElse(null)
-                if (user != null) {
+                val tokenVersion = (claims["ver"] as? Number)?.toInt() ?: -1
+                if (user != null && tokenVersion == user.authVersion) {
                     val principal = UserPrincipal.from(user)
                     val authentication = UsernamePasswordAuthenticationToken(
                         principal,
@@ -37,6 +38,8 @@ class JwtAuthenticationFilter(
                         listOf(SimpleGrantedAuthority("ROLE_${user.role.name}")),
                     )
                     SecurityContextHolder.getContext().authentication = authentication
+                } else {
+                    request.setAttribute("jwt.error", "TOKEN_INVALID")
                 }
             }.onFailure {
                 request.setAttribute("jwt.error", "INVALID_TOKEN")

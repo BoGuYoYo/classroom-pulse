@@ -5,6 +5,7 @@ import com.classpulse.domain.Question
 import com.classpulse.domain.QuestionType
 import com.classpulse.domain.Role
 import com.classpulse.repository.AnswerRepository
+import com.classpulse.repository.CourseMemberRepository
 import com.classpulse.repository.QuestionRepository
 import com.classpulse.web.ApiException
 import com.classpulse.web.dto.*
@@ -21,6 +22,7 @@ import kotlin.math.round
 class QuestionService(
     private val questionRepository: QuestionRepository,
     private val answerRepository: AnswerRepository,
+    private val memberRepository: CourseMemberRepository,
     private val accessGuard: AccessGuard,
     private val objectMapper: ObjectMapper,
 ) {
@@ -89,7 +91,7 @@ class QuestionService(
     @Transactional
     fun submit(questionId: Long, request: AnswerRequest): AnswerResultDto {
         val principal = accessGuard.requireStudent()
-        val question = findQuestion(questionId)
+        val question = findQuestionForUpdate(questionId)
         val courseId = requireNotNull(question.course.id)
         accessGuard.ensureStudentMember(courseId, principal.id)
         accessGuard.ensureWritable(question.course)
@@ -151,7 +153,7 @@ class QuestionService(
 
     @Transactional
     fun update(questionId: Long, request: UpdateQuestionRequest): QuestionDto {
-        val question = findQuestion(questionId)
+        val question = findQuestionForUpdate(questionId)
         val course = accessGuard.teacherCourse(requireNotNull(question.course.id))
         accessGuard.ensureWritable(course)
         val deadline = request.deadlineAt
@@ -208,7 +210,7 @@ class QuestionService(
 
     @Transactional
     fun close(questionId: Long): QuestionDto {
-        val question = findQuestion(questionId)
+        val question = findQuestionForUpdate(questionId)
         val course = accessGuard.teacherCourse(requireNotNull(question.course.id))
         accessGuard.ensureWritable(course)
         question.deadlineAt = Instant.now()
@@ -228,8 +230,10 @@ class QuestionService(
     fun stats(questionId: Long): QuestionStatsDto {
         accessGuard.requireTeacher()
         val question = findQuestion(questionId)
-        accessGuard.teacherCourse(requireNotNull(question.course.id))
-        val answers = answerRepository.findByQuestionIdOrderBySubmittedAtAsc(questionId)
+        val courseId = requireNotNull(question.course.id)
+        accessGuard.teacherCourse(courseId)
+        val memberIds = memberRepository.findByCourseIdOrderByJoinedAtAsc(courseId).mapNotNull { it.student.id }
+        val answers = answerRepository.findByQuestionIdAndStudentIdInOrderBySubmittedAtAsc(questionId, memberIds)
         val details = answers.map { answer ->
             AnswerDetailDto(
                 studentId = requireNotNull(answer.student.id),
@@ -276,6 +280,18 @@ class QuestionService(
         return question
     }
 
+    private fun findQuestionForUpdate(id: Long): Question {
+        val question = questionRepository.findByIdForUpdate(id) ?: throw ApiException(
+            HttpStatus.NOT_FOUND,
+            "QUESTION_NOT_FOUND",
+            "题目不存在",
+        )
+        if (question.deletedAt != null) {
+            throw ApiException(HttpStatus.NOT_FOUND, "QUESTION_NOT_FOUND", "题目不存在")
+        }
+        return question
+    }
+
     private fun choiceKeys(raw: String): List<String> =
         raw.split(',')
             .map { it.trim().uppercase(Locale.ROOT) }
@@ -292,8 +308,9 @@ class QuestionService(
         val courseId = requireNotNull(course.id)
         val parsedOptions = options(this)
         return if (principal.role == Role.TEACHER) {
-            val submissions = answerRepository.countByQuestionId(id)
-            val correct = answerRepository.countByQuestionIdAndIsCorrectTrue(id)
+            val memberIds = memberRepository.findByCourseIdOrderByJoinedAtAsc(courseId).mapNotNull { it.student.id }
+            val submissions = answerRepository.countByQuestionIdAndStudentIdIn(id, memberIds)
+            val correct = answerRepository.countByQuestionIdAndIsCorrectTrueAndStudentIdIn(id, memberIds)
             QuestionDto(
                 id = id,
                 courseId = courseId,

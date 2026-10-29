@@ -209,9 +209,14 @@ data class Submission(
     val score: Int? = null,
     val feedback: String? = null,
     val gradedAt: String? = null,
+    val version: Long = 0,
 )
 
-data class GradeSubmissionRequest(val score: Int, val feedback: String? = null)
+data class GradeSubmissionRequest(
+    val score: Int,
+    val feedback: String? = null,
+    val expectedVersion: Long,
+)
 
 data class StudentSubmission(
     val studentId: Long = 0,

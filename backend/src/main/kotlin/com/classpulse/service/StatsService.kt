@@ -23,12 +23,16 @@ class StatsService(
     @Transactional(readOnly = true)
     fun courseStats(courseId: Long): CourseStatsDto {
         val course = accessGuard.teacherCourse(courseId)
-        val memberCount = courseMemberRepository.countByCourseId(courseId)
+        val memberIds = courseMemberRepository.findByCourseIdOrderByJoinedAtAsc(courseId).mapNotNull { it.student.id }
+        val memberCount = memberIds.size.toLong()
 
         val attendanceItems = attendanceSessionRepository.findByCourseIdOrderByStartsAtDesc(courseId)
             .sortedBy { it.startsAt }
             .map { session ->
-                val present = attendanceRecordRepository.countBySessionId(requireNotNull(session.id))
+                val present = attendanceRecordRepository.countBySessionIdAndStudentIdIn(
+                    requireNotNull(session.id),
+                    memberIds,
+                )
                 AttendanceStatItemDto(
                     id = requireNotNull(session.id),
                     title = session.title,
@@ -51,8 +55,8 @@ class StatsService(
 
         val questionItems = questionRepository.findByCourseIdAndDeletedAtIsNullOrderByCreatedAtDesc(courseId).map { question ->
             val id = requireNotNull(question.id)
-            val submissions = answerRepository.countByQuestionId(id)
-            val correct = answerRepository.countByQuestionIdAndIsCorrectTrue(id)
+            val submissions = answerRepository.countByQuestionIdAndStudentIdIn(id, memberIds)
+            val correct = answerRepository.countByQuestionIdAndIsCorrectTrueAndStudentIdIn(id, memberIds)
             QuestionStatItemDto(
                 id = id,
                 prompt = question.prompt,
@@ -82,7 +86,7 @@ class StatsService(
             .sortedBy { it.id }
             .map { assignment ->
                 val id = requireNotNull(assignment.id)
-                val submitted = submissionRepository.countByAssignmentId(id)
+                val submitted = submissionRepository.countByAssignmentIdAndStudentIdIn(id, memberIds)
                 AssignmentStatItemDto(
                     id = id,
                     title = assignment.title,

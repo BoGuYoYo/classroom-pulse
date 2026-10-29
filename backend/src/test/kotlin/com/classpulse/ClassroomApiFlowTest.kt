@@ -512,7 +512,9 @@ class ClassroomApiFlowTest {
             mapOf("currentPassword" to "Student@123", "newPassword" to "NewPass@123"),
             lifecycleToken,
         ).andExpect(status().isOk)
-        login("LC9001", "NewPass@123")
+        getJson("/api/v1/auth/me", lifecycleToken)
+            .andExpect(status().isUnauthorized)
+        val afterChangeToken = login("LC9001", "NewPass@123")
 
         val lifecycleStudent = userRepository.findByUsername("LC9001")!!
         val resetPassword = postJson(
@@ -520,6 +522,8 @@ class ClassroomApiFlowTest {
             emptyMap<String, String>(),
             teacherToken,
         ).andExpect(status().isOk).andReturn().response.contentAsString
+        getJson("/api/v1/auth/me", afterChangeToken)
+            .andExpect(status().isUnauthorized)
         val tempPassword = objectMapper.readTree(resetPassword).path("data").path("temporaryPassword").asText()
         login("LC9001", tempPassword)
 
@@ -555,6 +559,20 @@ class ClassroomApiFlowTest {
             teacherToken,
         ).andExpect(status().isOk)
             .andExpect(jsonPath("$.data.prompt").value("已编辑题干"))
+        postJson("/api/v1/questions/$questionId/answers", mapOf("answer" to "43"), studentToken)
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.isCorrect").value(true))
+        putJson(
+            "/api/v1/questions/$questionId",
+            mapOf(
+                "prompt" to "已有作答后不能改答案",
+                "options" to null,
+                "correctAnswer" to "44",
+                "deadlineAt" to Instant.now().plus(2, ChronoUnit.DAYS).toString(),
+            ),
+            teacherToken,
+        ).andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code").value("QUESTION_HAS_ANSWERS"))
         postJson("/api/v1/questions/$questionId/close", emptyMap<String, String>(), teacherToken)
             .andExpect(status().isOk)
         postJson("/api/v1/questions/$questionId/answers", mapOf("answer" to "43"), studentToken)
@@ -585,9 +603,16 @@ class ClassroomApiFlowTest {
                 .header("Authorization", "Bearer $studentToken"),
         ).andExpect(status().isOk).andReturn().response.contentAsString
         val submissionId = objectMapper.readTree(upload).path("data").path("id").asLong()
+        val submissionVersion = objectMapper.readTree(upload).path("data").path("version").asLong()
         putJson(
             "/api/v1/submissions/$submissionId/grade",
-            mapOf("score" to 88, "feedback" to "结构清晰"),
+            mapOf("score" to 88, "feedback" to "结构清晰", "expectedVersion" to (submissionVersion - 1)),
+            teacherToken,
+        ).andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code").value("SUBMISSION_CHANGED"))
+        putJson(
+            "/api/v1/submissions/$submissionId/grade",
+            mapOf("score" to 88, "feedback" to "结构清晰", "expectedVersion" to submissionVersion),
             teacherToken,
         ).andExpect(status().isOk)
             .andExpect(jsonPath("$.data.score").value(88))
@@ -598,6 +623,78 @@ class ClassroomApiFlowTest {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.data.gradedCount").value(1))
             .andExpect(jsonPath("$.data.averageScore").value(88.0))
+    }
+
+    @Test
+    fun memberRemovalAlignsStatsAndImageAccess() {
+        val attendanceBody = postJson(
+            "/api/v1/courses/$courseId/attendance",
+            mapOf("title" to "成员移除统计", "durationMinutes" to 10),
+            teacherToken,
+        ).andExpect(status().isCreated).andReturn().response.contentAsString
+        val attendance = objectMapper.readTree(attendanceBody).path("data")
+        val attendanceId = attendance.path("id").asLong()
+        val code = attendance.path("code").asText()
+        postJson("/api/v1/attendance/$attendanceId/check-in", mapOf("code" to code), studentToken)
+            .andExpect(status().isOk)
+        postJson("/api/v1/attendance/$attendanceId/check-in", mapOf("code" to code), secondStudentToken)
+            .andExpect(status().isOk)
+
+        val assignmentBody = postJson(
+            "/api/v1/courses/$courseId/assignments",
+            mapOf(
+                "title" to "成员移除作业",
+                "description" to "统计口径",
+                "deadlineAt" to Instant.now().plus(2, ChronoUnit.DAYS).toString(),
+            ),
+            teacherToken,
+        ).andExpect(status().isCreated).andReturn().response.contentAsString
+        val assignmentId = objectMapper.readTree(assignmentBody).path("data").path("id").asLong()
+        val jpeg = Base64.getDecoder().decode(
+            "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAH/AP/EABQQAQAAAAAAAAAAAAAAAAAAABD/2gAIAQEAAQUCf//EABQRAQAAAAAAAAAAAAAAAAAAABD/2gAIAQMBAT8Bf//EABQRAQAAAAAAAAAAAAAAAAAAABD/2gAIAQIBAT8Bf//EABQQAQAAAAAAAAAAAAAAAAAAABD/2gAIAQEABj8Cf//EABQQAQAAAAAAAAAAAAAAAAAAABD/2gAIAQEAAT8hf//aAAwDAQACAAMAAAAQH//EABQRAQAAAAAAAAAAAAAAAAAAABD/2gAIAQMBAT8Qf//EABQRAQAAAAAAAAAAAAAAAAAAABD/2gAIAQIBAT8Qf//EABQQAQAAAAAAAAAAAAAAAAAAABD/2gAIAQEAAT8Qf//Z",
+        )
+        mockMvc.perform(
+            multipart("/api/v1/assignments/$assignmentId/submissions")
+                .file(MockMultipartFile("file", "member-one.jpg", "image/jpeg", jpeg))
+                .header("Authorization", "Bearer $studentToken"),
+        ).andExpect(status().isOk)
+        val removedUpload = mockMvc.perform(
+            multipart("/api/v1/assignments/$assignmentId/submissions")
+                .file(MockMultipartFile("file", "member-two.jpg", "image/jpeg", jpeg))
+                .header("Authorization", "Bearer $secondStudentToken"),
+        ).andExpect(status().isOk).andReturn().response.contentAsString
+        val removedSubmissionId = objectMapper.readTree(removedUpload).path("data").path("id").asLong()
+
+        val questionBody = postJson(
+            "/api/v1/courses/$courseId/questions",
+            mapOf(
+                "type" to QuestionType.FILL_BLANK.name,
+                "prompt" to "成员移除题目",
+                "correctAnswer" to "x",
+                "deadlineAt" to Instant.now().plus(2, ChronoUnit.DAYS).toString(),
+            ),
+            teacherToken,
+        ).andExpect(status().isCreated).andReturn().response.contentAsString
+        val questionId = objectMapper.readTree(questionBody).path("data").path("id").asLong()
+        postJson("/api/v1/questions/$questionId/answers", mapOf("answer" to "x"), studentToken)
+            .andExpect(status().isOk)
+        postJson("/api/v1/questions/$questionId/answers", mapOf("answer" to "x"), secondStudentToken)
+            .andExpect(status().isOk)
+
+        val removed = userRepository.findByUsername("S9002")!!
+        deleteJson("/api/v1/courses/$courseId/members/${removed.id}", teacherToken)
+            .andExpect(status().isOk)
+
+        getJson("/api/v1/courses/$courseId/stats", teacherToken)
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.attendance.items[0].presentCount").value(1))
+            .andExpect(jsonPath("$.data.attendance.items[0].expectedCount").value(1))
+            .andExpect(jsonPath("$.data.questions.items[0].submissionCount").value(1))
+            .andExpect(jsonPath("$.data.assignments.items[0].submissionCount").value(1))
+            .andExpect(jsonPath("$.data.assignments.items[0].expectedCount").value(1))
+
+        getJson("/api/v1/submissions/$removedSubmissionId/image", secondStudentToken)
+            .andExpect(status().isForbidden)
     }
 
     private fun createTeacher(username: String, name: String) {

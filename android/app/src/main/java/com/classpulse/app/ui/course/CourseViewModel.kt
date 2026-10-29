@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.classpulse.app.ClassPulseApplication
 import com.classpulse.app.data.model.*
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -44,12 +45,16 @@ class CourseViewModel(application: Application) : AndroidViewModel(application) 
 
     private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 12)
     val messages = _messages.asSharedFlow()
+    private var loadJob: Job? = null
+    private var sheetJob: Job? = null
 
     fun load(courseId: Long, quiet: Boolean = false) {
         if (!quiet) {
             _state.update { it.copy(loading = true, error = null) }
         }
-        viewModelScope.launch {
+        // A slow poll must never race a newer poll and overwrite fresh state.
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             coroutineScope {
                 val courseDeferred = async { repository.course(courseId) }
                 val attendanceDeferred = async { repository.attendance(courseId) }
@@ -281,70 +286,85 @@ class CourseViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun loadAttendanceDetail(attendanceId: Long) {
-        _state.update {
-            it.copy(
-                sheetLoading = true,
-                sheetError = null,
-                attendanceDetail = null,
-                questionStats = null,
-                assignmentSubmissions = null,
-            )
+    fun loadAttendanceDetail(attendanceId: Long, quiet: Boolean = false) {
+        if (!quiet) {
+            _state.update {
+                it.copy(
+                    sheetLoading = true,
+                    sheetError = null,
+                    attendanceDetail = null,
+                    questionStats = null,
+                    assignmentSubmissions = null,
+                )
+            }
         }
-        viewModelScope.launch {
+        sheetJob?.cancel()
+        sheetJob = viewModelScope.launch {
             repository.attendanceResults(attendanceId)
                 .onSuccess { detail ->
                     _state.update { it.copy(sheetLoading = false, attendanceDetail = detail) }
                 }
                 .onFailure {
-                    _state.update { state ->
-                        state.copy(sheetLoading = false, sheetError = it.message ?: "名单加载失败")
+                    if (!quiet) {
+                        _state.update { state ->
+                            state.copy(sheetLoading = false, sheetError = it.message ?: "名单加载失败")
+                        }
                     }
                 }
         }
     }
 
-    fun loadQuestionStats(questionId: Long) {
-        _state.update {
-            it.copy(
-                sheetLoading = true,
-                sheetError = null,
-                attendanceDetail = null,
-                questionStats = null,
-                assignmentSubmissions = null,
-            )
+    fun loadQuestionStats(questionId: Long, quiet: Boolean = false) {
+        if (!quiet) {
+            _state.update {
+                it.copy(
+                    sheetLoading = true,
+                    sheetError = null,
+                    attendanceDetail = null,
+                    questionStats = null,
+                    assignmentSubmissions = null,
+                )
+            }
         }
-        viewModelScope.launch {
+        sheetJob?.cancel()
+        sheetJob = viewModelScope.launch {
             repository.questionStats(questionId)
                 .onSuccess { stats ->
                     _state.update { it.copy(sheetLoading = false, questionStats = stats) }
                 }
                 .onFailure {
-                    _state.update { state ->
-                        state.copy(sheetLoading = false, sheetError = it.message ?: "作答统计加载失败")
+                    if (!quiet) {
+                        _state.update { state ->
+                            state.copy(sheetLoading = false, sheetError = it.message ?: "作答统计加载失败")
+                        }
                     }
                 }
         }
     }
 
-    fun loadAssignmentSubmissions(assignmentId: Long) {
-        _state.update {
-            it.copy(
-                sheetLoading = true,
-                sheetError = null,
-                attendanceDetail = null,
-                questionStats = null,
-                assignmentSubmissions = null,
-            )
+    fun loadAssignmentSubmissions(assignmentId: Long, quiet: Boolean = false) {
+        if (!quiet) {
+            _state.update {
+                it.copy(
+                    sheetLoading = true,
+                    sheetError = null,
+                    attendanceDetail = null,
+                    questionStats = null,
+                    assignmentSubmissions = null,
+                )
+            }
         }
-        viewModelScope.launch {
+        sheetJob?.cancel()
+        sheetJob = viewModelScope.launch {
             repository.assignmentSubmissions(assignmentId)
                 .onSuccess { submissions ->
                     _state.update { it.copy(sheetLoading = false, assignmentSubmissions = submissions) }
                 }
                 .onFailure {
-                    _state.update { state ->
-                        state.copy(sheetLoading = false, sheetError = it.message ?: "提交情况加载失败")
+                    if (!quiet) {
+                        _state.update { state ->
+                            state.copy(sheetLoading = false, sheetError = it.message ?: "提交情况加载失败")
+                        }
                     }
                 }
         }
@@ -522,6 +542,7 @@ class CourseViewModel(application: Application) : AndroidViewModel(application) 
     fun gradeSubmission(
         assignmentId: Long,
         submissionId: Long,
+        expectedVersion: Long,
         score: Int,
         feedback: String?,
         onResult: (String?) -> Unit,
@@ -529,7 +550,7 @@ class CourseViewModel(application: Application) : AndroidViewModel(application) 
         if (_state.value.busy) return
         viewModelScope.launch {
             _state.update { it.copy(busy = true) }
-            repository.gradeSubmission(submissionId, score, feedback)
+            repository.gradeSubmission(submissionId, score, feedback, expectedVersion)
                 .onSuccess {
                     val refreshed = repository.assignmentSubmissions(assignmentId)
                     _state.update { state ->

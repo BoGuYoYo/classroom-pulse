@@ -28,7 +28,7 @@ class ClassroomRepository(
 
     suspend fun me(): Result<User> = call { apiProvider.api.me() }
 
-    suspend fun changePassword(currentPassword: String, newPassword: String): Result<User> =
+    suspend fun changePassword(currentPassword: String, newPassword: String): Result<AuthData> =
         call { apiProvider.api.changePassword(ChangePasswordRequest(currentPassword, newPassword)) }
 
     suspend fun courses(): Result<List<CourseSummary>> = call { apiProvider.api.courses() }
@@ -119,8 +119,13 @@ class ClassroomRepository(
     suspend fun assignmentSubmissions(assignmentId: Long): Result<AssignmentSubmissions> =
         call { apiProvider.api.assignmentSubmissions(assignmentId) }
 
-    suspend fun gradeSubmission(submissionId: Long, score: Int, feedback: String?): Result<Submission> =
-        call { apiProvider.api.gradeSubmission(submissionId, GradeSubmissionRequest(score, feedback)) }
+    suspend fun gradeSubmission(
+        submissionId: Long,
+        score: Int,
+        feedback: String?,
+        expectedVersion: Long,
+    ): Result<Submission> =
+        call { apiProvider.api.gradeSubmission(submissionId, GradeSubmissionRequest(score, feedback, expectedVersion)) }
 
     suspend fun stats(courseId: Long): Result<CourseStats> = call { apiProvider.api.stats(courseId) }
 

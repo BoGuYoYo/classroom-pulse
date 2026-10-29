@@ -86,7 +86,7 @@ class AssignmentService(
         // surrounding transaction commits or rolls back. This prevents two
         // requests from reading the same old path and creating overwritten rows.
         val student = accessGuard.lockCurrentUser()
-        val existing = submissionRepository.findByAssignmentIdAndStudentId(assignmentId, principal.id)
+        val existing = submissionRepository.findByAssignmentIdAndStudentIdForUpdate(assignmentId, principal.id)
         val previousPath = existing?.imagePath
         val newPath = storageService.store(assignmentId, bytes, detected.extension)
         val now = Instant.now()
@@ -178,11 +178,20 @@ class AssignmentService(
     @Transactional
     fun gradeSubmission(submissionId: Long, request: GradeSubmissionRequest): SubmissionDto {
         accessGuard.requireTeacher()
-        val submission = submissionRepository.findById(submissionId).orElseThrow {
-            ApiException(HttpStatus.NOT_FOUND, "SUBMISSION_NOT_FOUND", "作业提交不存在")
-        }
+        val submission = submissionRepository.findByIdForUpdate(submissionId) ?: throw ApiException(
+            HttpStatus.NOT_FOUND,
+            "SUBMISSION_NOT_FOUND",
+            "作业提交不存在",
+        )
         val courseId = requireNotNull(submission.assignment.course.id)
         accessGuard.teacherCourse(courseId)
+        if (request.expectedVersion != submission.version) {
+            throw ApiException(
+                HttpStatus.CONFLICT,
+                "SUBMISSION_CHANGED",
+                "学生提交已更新，请重新查看后再评分",
+            )
+        }
         submission.score = request.score
         submission.feedback = request.feedback?.trim()?.ifBlank { null }
         submission.gradedAt = Instant.now()
@@ -198,10 +207,16 @@ class AssignmentService(
         }
         val assignment = submission.assignment
         val course = assignment.course
+        if (course.deletedAt != null) {
+            throw ApiException(HttpStatus.NOT_FOUND, "SUBMISSION_NOT_FOUND", "作业提交不存在")
+        }
         val isOwner = submission.student.id == principal.id
         val isTeacher = principal.role == Role.TEACHER && course.teacher.id == principal.id
         if (!isOwner && !isTeacher) {
             throw ApiException(HttpStatus.FORBIDDEN, "IMAGE_FORBIDDEN", "无权查看该图片")
+        }
+        if (isOwner && !memberRepository.existsByCourseIdAndStudentId(requireNotNull(course.id), principal.id)) {
+            throw ApiException(HttpStatus.FORBIDDEN, "NOT_MEMBER", "你已不在该课程中")
         }
         return StoredImage(
             resource = storageService.load(submission.imagePath),
@@ -219,7 +234,9 @@ class AssignmentService(
         val principal = accessGuard.principal()
         val id = requireNotNull(id)
         val courseId = requireNotNull(course.id)
-        val memberCount = memberRepository.countByCourseId(courseId)
+        val members = memberRepository.findByCourseIdOrderByJoinedAtAsc(courseId)
+        val memberIds = members.mapNotNull { it.student.id }
+        val memberCount = members.size.toLong()
         val mySubmission = if (principal.role == Role.STUDENT) {
             submissionRepository.findByAssignmentIdAndStudentId(id, principal.id)
         } else {
@@ -232,7 +249,7 @@ class AssignmentService(
             description = description,
             deadlineAt = deadlineAt,
             createdAt = createdAt,
-            submissionCount = submissionRepository.countByAssignmentId(id),
+            submissionCount = submissionRepository.countByAssignmentIdAndStudentIdIn(id, memberIds),
             memberCount = memberCount,
             active = Instant.now().isBefore(deadlineAt),
             mySubmission = mySubmission?.toDto(includeStudent = true),
@@ -256,6 +273,7 @@ class AssignmentService(
             score = score,
             feedback = feedback,
             gradedAt = gradedAt,
+            version = version,
         )
     }
 

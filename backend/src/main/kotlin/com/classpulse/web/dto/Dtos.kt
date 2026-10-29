@@ -280,6 +280,7 @@ data class SubmissionDto(
     val score: Int?,
     val feedback: String?,
     val gradedAt: Instant?,
+    val version: Long,
 )
 
 data class GradeSubmissionRequest(
@@ -290,6 +291,9 @@ data class GradeSubmissionRequest(
 
     @field:Size(max = 2000, message = "评语不能超过 2000 字")
     val feedback: String? = null,
+
+    @field:NotNull(message = "提交版本不能为空")
+    val expectedVersion: Long?,
 )
 
 data class AssignmentDto(

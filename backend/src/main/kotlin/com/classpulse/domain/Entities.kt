@@ -31,6 +31,9 @@ class User(
 
     @Column(name = "created_at", nullable = false)
     var createdAt: Instant = Instant.now(),
+
+    @Column(name = "auth_version", nullable = false)
+    var authVersion: Int = 0,
 )
 
 @Entity
@@ -271,4 +274,8 @@ class Submission(
 
     @Column(name = "graded_at")
     var gradedAt: Instant? = null,
+
+    @Version
+    @Column(nullable = false)
+    var version: Long = 0,
 )

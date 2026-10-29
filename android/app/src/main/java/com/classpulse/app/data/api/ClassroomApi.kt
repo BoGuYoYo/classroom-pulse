@@ -16,7 +16,7 @@ interface ClassroomApi {
     suspend fun me(): ApiEnvelope<User>
 
     @PUT("api/v1/auth/password")
-    suspend fun changePassword(@Body request: ChangePasswordRequest): ApiEnvelope<User>
+    suspend fun changePassword(@Body request: ChangePasswordRequest): ApiEnvelope<AuthData>
 
     @GET("api/v1/courses")
     suspend fun courses(): ApiEnvelope<List<CourseSummary>>

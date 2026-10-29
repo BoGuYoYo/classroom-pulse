@@ -37,7 +37,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.classpulse.app.ClassPulseApplication
@@ -79,6 +82,7 @@ fun CourseScreen(
     var temporaryPasswordInfo by remember { mutableStateOf<String?>(null) }
     var submissionTarget by remember { mutableStateOf<Assignment?>(null) }
     var sheetKind by remember { mutableStateOf<String?>(null) }
+    var sheetTargetId by remember { mutableStateOf<Long?>(null) }
     var previewUrl by remember { mutableStateOf<String?>(null) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -93,12 +97,23 @@ fun CourseScreen(
             if (user.isTeacher) viewModel.loadStats(courseId) else viewModel.loadStudentStats(courseId)
         }
     }
-    LaunchedEffect(courseId) {
-        while (isActive) {
-            delay(5_000)
-            viewModel.refresh(courseId)
-            if (selectedTab == 3) {
-                if (user.isTeacher) viewModel.loadStats(courseId, force = true) else viewModel.loadStudentStats(courseId, force = true)
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(courseId, lifecycleOwner) {
+        lifecycleOwner.lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            while (isActive) {
+                delay(5_000)
+                viewModel.refresh(courseId)
+                if (selectedTab == 3) {
+                    if (user.isTeacher) viewModel.loadStats(courseId, force = true) else viewModel.loadStudentStats(courseId, force = true)
+                }
+                val targetId = sheetTargetId
+                if (targetId != null) {
+                    when (sheetKind) {
+                        "attendance" -> viewModel.loadAttendanceDetail(targetId, quiet = true)
+                        "question" -> viewModel.loadQuestionStats(targetId, quiet = true)
+                        "assignment" -> viewModel.loadAssignmentSubmissions(targetId, quiet = true)
+                    }
+                }
             }
         }
     }
@@ -172,6 +187,7 @@ fun CourseScreen(
                                 onCreate = { showCreateAttendance = true },
                                 onOpenResults = {
                                     sheetKind = "attendance"
+                                    sheetTargetId = it
                                     viewModel.loadAttendanceDetail(it)
                                 },
                                 onCheckIn = { attendanceId, code, onResult ->
@@ -185,6 +201,7 @@ fun CourseScreen(
                                 onCreate = { showCreateQuestion = true },
                                 onOpenStats = {
                                     sheetKind = "question"
+                                    sheetTargetId = it
                                     viewModel.loadQuestionStats(it)
                                 },
                                 onEditQuestion = { editQuestionTarget = it },
@@ -203,6 +220,7 @@ fun CourseScreen(
                                 onCreate = { showCreateAssignment = true },
                                 onOpenSubmissions = {
                                     sheetKind = "assignment"
+                                    sheetTargetId = it
                                     viewModel.loadAssignmentSubmissions(it)
                                 },
                                 onSubmit = { submissionTarget = it },
@@ -373,6 +391,7 @@ fun CourseScreen(
                 viewModel.gradeSubmission(
                     assignmentId = submission.assignmentId,
                     submissionId = submission.id,
+                    expectedVersion = submission.version,
                     score = score,
                     feedback = feedback,
                     onResult = onResult,
@@ -414,6 +433,7 @@ fun CourseScreen(
         ModalBottomSheet(
             onDismissRequest = {
                 sheetKind = null
+                sheetTargetId = null
                 viewModel.clearSheet()
             },
             sheetState = sheetState,
@@ -432,6 +452,7 @@ fun CourseScreen(
                 state = state,
                 onClose = {
                     sheetKind = null
+                    sheetTargetId = null
                     viewModel.clearSheet()
                 },
                 onPreview = { path -> previewUrl = path },

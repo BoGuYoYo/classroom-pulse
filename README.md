@@ -114,6 +114,7 @@ Detailed instructions: [deployment and reproduction](docs/05-部署与复现.md)
 - Keep `.env`, keystores, tokens, database passwords, and uploaded student images out of Git.
 - Use HTTPS in production. Release Android builds reject cleartext traffic.
 - Do not expose MySQL or the backend directly to the internet.
+- Password changes and teacher-assisted resets invalidate all older JWTs through a per-user auth version; the current device receives a new token after a self-service password change.
 - Use a strong, unique bootstrap teacher password and remove `BOOTSTRAP_TEACHER_PASSWORD` from the environment after the first successful login.
 - Debug builds allow a runtime server URL for development. Release builds hide the server address and use the build-time HTTPS URL.
 

@@ -51,6 +51,7 @@ class JwtService(private val properties: AppProperties) {
             .claim("username", user.username)
             .claim("name", user.name)
             .claim("role", user.role.name)
+            .claim("ver", user.authVersion)
             .issuedAt(Date.from(now))
             .expiration(Date.from(expires))
             .signWith(key, Jwts.SIG.HS256)

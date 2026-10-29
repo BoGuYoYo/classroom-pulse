@@ -32,5 +32,5 @@ class AuthController(private val authService: AuthService) {
     fun changePassword(
         @AuthenticationPrincipal principal: UserPrincipal,
         @Valid @RequestBody request: ChangePasswordRequest,
-    ): ApiResponse<UserDto> = ApiResponse.success(authService.changePassword(principal, request))
+    ): ApiResponse<AuthResponse> = ApiResponse.success(authService.changePassword(principal, request))
 }

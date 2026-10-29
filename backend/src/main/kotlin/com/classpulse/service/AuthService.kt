@@ -59,7 +59,7 @@ class AuthService(
     }
 
     @Transactional
-    fun changePassword(principal: UserPrincipal, request: ChangePasswordRequest): UserDto {
+    fun changePassword(principal: UserPrincipal, request: ChangePasswordRequest): AuthResponse {
         val user = userRepository.findById(principal.id).orElseThrow {
             throw ApiException(HttpStatus.UNAUTHORIZED, "USER_NOT_FOUND", "账号不存在")
         }
@@ -70,8 +70,10 @@ class AuthService(
             throw ApiException(HttpStatus.BAD_REQUEST, "PASSWORD_UNCHANGED", "新密码不能与当前密码相同")
         }
         user.passwordHash = passwordEncoder.encode(request.newPassword)
+        user.authVersion += 1
         userRepository.save(user)
-        return user.toDto()
+        // Keep the current device signed in while invalidating every older token.
+        return AuthResponse(jwtService.issue(user), user.toDto())
     }
 
     private fun User.toDto(): UserDto = UserDto(

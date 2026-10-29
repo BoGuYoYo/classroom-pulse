@@ -47,6 +47,7 @@ interface AttendanceSessionRepository : JpaRepository<AttendanceSession, Long> {
 
 interface AttendanceRecordRepository : JpaRepository<AttendanceRecord, Long> {
     fun countBySessionId(sessionId: Long): Long
+    fun countBySessionIdAndStudentIdIn(sessionId: Long, studentIds: Collection<Long>): Long
     fun existsBySessionIdAndStudentId(sessionId: Long, studentId: Long): Boolean
     fun findBySessionIdAndStudentId(sessionId: Long, studentId: Long): AttendanceRecord?
 
@@ -57,15 +58,24 @@ interface AttendanceRecordRepository : JpaRepository<AttendanceRecord, Long> {
 interface QuestionRepository : JpaRepository<Question, Long> {
     fun findByCourseIdOrderByCreatedAtDesc(courseId: Long): List<Question>
     fun findByCourseIdAndDeletedAtIsNullOrderByCreatedAtDesc(courseId: Long): List<Question>
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select q from Question q where q.id = :id")
+    fun findByIdForUpdate(@Param("id") id: Long): Question?
 }
 
 interface AnswerRepository : JpaRepository<Answer, Long> {
     fun countByQuestionId(questionId: Long): Long
     fun countByQuestionIdAndIsCorrectTrue(questionId: Long): Long
+    fun countByQuestionIdAndStudentIdIn(questionId: Long, studentIds: Collection<Long>): Long
+    fun countByQuestionIdAndIsCorrectTrueAndStudentIdIn(questionId: Long, studentIds: Collection<Long>): Long
     fun findByQuestionIdAndStudentId(questionId: Long, studentId: Long): Answer?
 
     @EntityGraph(attributePaths = ["student"])
     fun findByQuestionIdOrderBySubmittedAtAsc(questionId: Long): List<Answer>
+
+    @EntityGraph(attributePaths = ["student"])
+    fun findByQuestionIdAndStudentIdInOrderBySubmittedAtAsc(questionId: Long, studentIds: Collection<Long>): List<Answer>
 }
 
 interface AssignmentRepository : JpaRepository<Assignment, Long> {
@@ -74,7 +84,19 @@ interface AssignmentRepository : JpaRepository<Assignment, Long> {
 
 interface SubmissionRepository : JpaRepository<Submission, Long> {
     fun countByAssignmentId(assignmentId: Long): Long
+    fun countByAssignmentIdAndStudentIdIn(assignmentId: Long, studentIds: Collection<Long>): Long
     fun findByAssignmentIdAndStudentId(assignmentId: Long, studentId: Long): Submission?
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select s from Submission s where s.id = :id")
+    fun findByIdForUpdate(@Param("id") id: Long): Submission?
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select s from Submission s where s.assignment.id = :assignmentId and s.student.id = :studentId")
+    fun findByAssignmentIdAndStudentIdForUpdate(
+        @Param("assignmentId") assignmentId: Long,
+        @Param("studentId") studentId: Long,
+    ): Submission?
 
     @EntityGraph(attributePaths = ["student"])
     fun findByAssignmentIdOrderByUpdatedAtAsc(assignmentId: Long): List<Submission>

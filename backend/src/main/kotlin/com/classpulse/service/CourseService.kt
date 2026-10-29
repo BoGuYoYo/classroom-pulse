@@ -205,6 +205,7 @@ class CourseService(
             repeat(12) { append(alphabet[random.nextInt(alphabet.length)]) }
         }
         student.passwordHash = passwordEncoder.encode(temporaryPassword)
+        student.authVersion += 1
         userRepository.save(student)
         return ResetStudentPasswordDto(
             studentId = studentId,
