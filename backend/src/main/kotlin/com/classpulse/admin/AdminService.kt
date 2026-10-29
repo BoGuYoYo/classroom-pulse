@@ -127,6 +127,8 @@ class AdminService(
             answerRepository.deleteByStudentId(accountId)
             attendanceRecordRepository.deleteByStudentId(accountId)
             memberRepository.deleteByStudentId(accountId)
+            entityManager.flush()
+            entityManager.clear()
         }
         userRepository.deleteById(accountId)
         deleteFilesAfterCommit(files)
