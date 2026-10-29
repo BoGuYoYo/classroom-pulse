@@ -32,6 +32,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.classpulse.app.BuildConfig
 import com.classpulse.app.ui.auth.AuthViewModel
 import com.classpulse.app.ui.components.*
 import com.classpulse.app.ui.theme.*
@@ -62,10 +63,19 @@ fun AuthScreen(viewModel: AuthViewModel) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Wordmark(compact = true)
-                ServerChip(
-                    url = state.serverUrl,
-                    onClick = { showServerDialog = true },
-                )
+                if (BuildConfig.DEBUG) {
+                    ServerChip(
+                        url = state.serverUrl,
+                        onClick = { showServerDialog = true },
+                    )
+                } else {
+                    StatusBadge(
+                        text = "HTTPS 安全连接",
+                        containerColor = Mint,
+                        contentColor = TealDeep,
+                        dotColor = Teal,
+                    )
+                }
             }
 
             Spacer(Modifier.height(42.dp))
@@ -220,7 +230,7 @@ fun AuthScreen(viewModel: AuthViewModel) {
         }
     }
 
-    if (showServerDialog) {
+    if (showServerDialog && BuildConfig.DEBUG) {
         ServerDialog(
             initialUrl = state.serverUrl,
             onDismiss = { showServerDialog = false },
