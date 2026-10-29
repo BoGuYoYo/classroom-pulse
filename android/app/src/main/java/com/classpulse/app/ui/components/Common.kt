@@ -196,11 +196,13 @@ fun ClassPulseField(
     visualTransformation: VisualTransformation = VisualTransformation.None,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     isError: Boolean = false,
+    enabled: Boolean = true,
 ) {
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
         label = { Text(label) },
+        enabled = enabled,
         placeholder = placeholder?.let { { Text(it, color = Muted.copy(alpha = 0.7f)) } },
         modifier = modifier.fillMaxWidth(),
         leadingIcon = leadingIcon,

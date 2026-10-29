@@ -7,6 +7,7 @@ import com.classpulse.security.JwtService
 import com.classpulse.security.UserPrincipal
 import com.classpulse.web.ApiException
 import com.classpulse.web.dto.AuthResponse
+import com.classpulse.web.dto.ChangePasswordRequest
 import com.classpulse.web.dto.LoginRequest
 import com.classpulse.web.dto.RegisterRequest
 import com.classpulse.web.dto.UserDto
@@ -54,6 +55,22 @@ class AuthService(
         val user = userRepository.findById(principal.id).orElseThrow {
             throw ApiException(HttpStatus.UNAUTHORIZED, "USER_NOT_FOUND", "账号不存在")
         }
+        return user.toDto()
+    }
+
+    @Transactional
+    fun changePassword(principal: UserPrincipal, request: ChangePasswordRequest): UserDto {
+        val user = userRepository.findById(principal.id).orElseThrow {
+            throw ApiException(HttpStatus.UNAUTHORIZED, "USER_NOT_FOUND", "账号不存在")
+        }
+        if (!passwordEncoder.matches(request.currentPassword, user.passwordHash)) {
+            throw ApiException(HttpStatus.BAD_REQUEST, "CURRENT_PASSWORD_INVALID", "当前密码不正确")
+        }
+        if (passwordEncoder.matches(request.newPassword, user.passwordHash)) {
+            throw ApiException(HttpStatus.BAD_REQUEST, "PASSWORD_UNCHANGED", "新密码不能与当前密码相同")
+        }
+        user.passwordHash = passwordEncoder.encode(request.newPassword)
+        userRepository.save(user)
         return user.toDto()
     }
 

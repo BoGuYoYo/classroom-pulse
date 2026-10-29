@@ -28,4 +28,47 @@ class CourseController(private val courseService: CourseService) {
     @GetMapping("/{courseId}/members")
     fun members(@PathVariable courseId: Long): ApiResponse<List<MemberDto>> =
         ApiResponse.success(courseService.members(courseId))
+
+    @PutMapping("/{courseId}")
+    fun update(
+        @PathVariable courseId: Long,
+        @Valid @RequestBody request: UpdateCourseRequest,
+    ): ApiResponse<CourseSummaryDto> = ApiResponse.success(courseService.update(courseId, request))
+
+    @PostMapping("/{courseId}/archive")
+    fun archive(@PathVariable courseId: Long): ApiResponse<CourseSummaryDto> =
+        ApiResponse.success(courseService.setArchived(courseId, true))
+
+    @PostMapping("/{courseId}/unarchive")
+    fun unarchive(@PathVariable courseId: Long): ApiResponse<CourseSummaryDto> =
+        ApiResponse.success(courseService.setArchived(courseId, false))
+
+    @DeleteMapping("/{courseId}")
+    fun delete(@PathVariable courseId: Long): ApiResponse<Boolean> {
+        courseService.delete(courseId)
+        return ApiResponse.success(true)
+    }
+
+    @PostMapping("/{courseId}/invite-code/reset")
+    fun resetInviteCode(@PathVariable courseId: Long): ApiResponse<CourseSummaryDto> =
+        ApiResponse.success(courseService.resetInviteCode(courseId))
+
+    @DeleteMapping("/{courseId}/members/{studentId}")
+    fun removeMember(@PathVariable courseId: Long, @PathVariable studentId: Long): ApiResponse<Boolean> {
+        courseService.removeMember(courseId, studentId)
+        return ApiResponse.success(true)
+    }
+
+    @DeleteMapping("/{courseId}/membership")
+    fun leave(@PathVariable courseId: Long): ApiResponse<Boolean> {
+        courseService.leave(courseId)
+        return ApiResponse.success(true)
+    }
+
+    @PostMapping("/{courseId}/members/{studentId}/reset-password")
+    fun resetStudentPassword(
+        @PathVariable courseId: Long,
+        @PathVariable studentId: Long,
+    ): ApiResponse<ResetStudentPasswordDto> =
+        ApiResponse.success(courseService.resetStudentPassword(courseId, studentId))
 }

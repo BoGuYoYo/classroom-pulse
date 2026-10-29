@@ -15,6 +15,9 @@ interface ClassroomApi {
     @GET("api/v1/auth/me")
     suspend fun me(): ApiEnvelope<User>
 
+    @PUT("api/v1/auth/password")
+    suspend fun changePassword(@Body request: ChangePasswordRequest): ApiEnvelope<User>
+
     @GET("api/v1/courses")
     suspend fun courses(): ApiEnvelope<List<CourseSummary>>
 
@@ -29,6 +32,39 @@ interface ClassroomApi {
 
     @GET("api/v1/courses/{courseId}/members")
     suspend fun members(@Path("courseId") courseId: Long): ApiEnvelope<List<Member>>
+
+    @PUT("api/v1/courses/{courseId}")
+    suspend fun updateCourse(
+        @Path("courseId") courseId: Long,
+        @Body request: UpdateCourseRequest,
+    ): ApiEnvelope<CourseSummary>
+
+    @POST("api/v1/courses/{courseId}/archive")
+    suspend fun archiveCourse(@Path("courseId") courseId: Long): ApiEnvelope<CourseSummary>
+
+    @POST("api/v1/courses/{courseId}/unarchive")
+    suspend fun unarchiveCourse(@Path("courseId") courseId: Long): ApiEnvelope<CourseSummary>
+
+    @DELETE("api/v1/courses/{courseId}")
+    suspend fun deleteCourse(@Path("courseId") courseId: Long): ApiEnvelope<Boolean>
+
+    @POST("api/v1/courses/{courseId}/invite-code/reset")
+    suspend fun resetInviteCode(@Path("courseId") courseId: Long): ApiEnvelope<CourseSummary>
+
+    @DELETE("api/v1/courses/{courseId}/members/{studentId}")
+    suspend fun removeMember(
+        @Path("courseId") courseId: Long,
+        @Path("studentId") studentId: Long,
+    ): ApiEnvelope<Boolean>
+
+    @DELETE("api/v1/courses/{courseId}/membership")
+    suspend fun leaveCourse(@Path("courseId") courseId: Long): ApiEnvelope<Boolean>
+
+    @POST("api/v1/courses/{courseId}/members/{studentId}/reset-password")
+    suspend fun resetStudentPassword(
+        @Path("courseId") courseId: Long,
+        @Path("studentId") studentId: Long,
+    ): ApiEnvelope<ResetStudentPassword>
 
     @GET("api/v1/courses/{courseId}/attendance")
     suspend fun attendance(@Path("courseId") courseId: Long): ApiEnvelope<List<Attendance>>
@@ -56,6 +92,18 @@ interface ClassroomApi {
         @Path("courseId") courseId: Long,
         @Body request: CreateQuestionRequest,
     ): ApiEnvelope<Question>
+
+    @PUT("api/v1/questions/{questionId}")
+    suspend fun updateQuestion(
+        @Path("questionId") questionId: Long,
+        @Body request: UpdateQuestionRequest,
+    ): ApiEnvelope<Question>
+
+    @POST("api/v1/questions/{questionId}/close")
+    suspend fun closeQuestion(@Path("questionId") questionId: Long): ApiEnvelope<Question>
+
+    @DELETE("api/v1/questions/{questionId}")
+    suspend fun deleteQuestion(@Path("questionId") questionId: Long): ApiEnvelope<Boolean>
 
     @POST("api/v1/questions/{questionId}/answers")
     suspend fun answer(
@@ -86,6 +134,15 @@ interface ClassroomApi {
     @GET("api/v1/assignments/{assignmentId}/submissions")
     suspend fun assignmentSubmissions(@Path("assignmentId") assignmentId: Long): ApiEnvelope<AssignmentSubmissions>
 
+    @PUT("api/v1/submissions/{submissionId}/grade")
+    suspend fun gradeSubmission(
+        @Path("submissionId") submissionId: Long,
+        @Body request: GradeSubmissionRequest,
+    ): ApiEnvelope<Submission>
+
     @GET("api/v1/courses/{courseId}/stats")
     suspend fun stats(@Path("courseId") courseId: Long): ApiEnvelope<CourseStats>
+
+    @GET("api/v1/courses/{courseId}/my-stats")
+    suspend fun myStats(@Path("courseId") courseId: Long): ApiEnvelope<StudentCourseStats>
 }

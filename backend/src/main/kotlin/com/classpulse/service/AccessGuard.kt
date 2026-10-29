@@ -67,6 +67,9 @@ class AccessGuard(
         val course = courseRepository.findById(courseId).orElseThrow {
             throw ApiException(HttpStatus.NOT_FOUND, "COURSE_NOT_FOUND", "课程不存在")
         }
+        if (course.deletedAt != null) {
+            throw ApiException(HttpStatus.NOT_FOUND, "COURSE_NOT_FOUND", "课程不存在")
+        }
         if (course.teacher.id != principal.id) {
             throw ApiException(HttpStatus.FORBIDDEN, "COURSE_FORBIDDEN", "只能管理自己创建的课程")
         }
@@ -78,10 +81,19 @@ class AccessGuard(
         val course = courseRepository.findById(courseId).orElseThrow {
             throw ApiException(HttpStatus.NOT_FOUND, "COURSE_NOT_FOUND", "课程不存在")
         }
+        if (course.deletedAt != null) {
+            throw ApiException(HttpStatus.NOT_FOUND, "COURSE_NOT_FOUND", "课程不存在")
+        }
         if (!courseMemberRepository.existsByCourseIdAndStudentId(courseId, principal.id)) {
             throw ApiException(HttpStatus.FORBIDDEN, "NOT_MEMBER", "你尚未加入该课程")
         }
         return course
+    }
+
+    fun ensureWritable(course: Course) {
+        if (course.archivedAt != null) {
+            throw ApiException(HttpStatus.CONFLICT, "COURSE_ARCHIVED", "课程已归档，只能查看，不能继续操作")
+        }
     }
 
     fun readableCourse(courseId: Long): Course {

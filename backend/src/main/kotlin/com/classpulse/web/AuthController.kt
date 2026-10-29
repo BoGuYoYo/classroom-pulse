@@ -3,6 +3,7 @@ package com.classpulse.web
 import com.classpulse.security.UserPrincipal
 import com.classpulse.service.AuthService
 import com.classpulse.web.dto.AuthResponse
+import com.classpulse.web.dto.ChangePasswordRequest
 import com.classpulse.web.dto.LoginRequest
 import com.classpulse.web.dto.RegisterRequest
 import com.classpulse.web.dto.UserDto
@@ -26,4 +27,10 @@ class AuthController(private val authService: AuthService) {
     @GetMapping("/me")
     fun me(@AuthenticationPrincipal principal: UserPrincipal): ApiResponse<UserDto> =
         ApiResponse.success(authService.me(principal))
+
+    @PutMapping("/password")
+    fun changePassword(
+        @AuthenticationPrincipal principal: UserPrincipal,
+        @Valid @RequestBody request: ChangePasswordRequest,
+    ): ApiResponse<UserDto> = ApiResponse.success(authService.changePassword(principal, request))
 }

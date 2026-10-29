@@ -46,6 +46,8 @@ import com.classpulse.app.ui.components.*
 import com.classpulse.app.ui.course.CourseViewModel
 import com.classpulse.app.ui.theme.*
 import com.classpulse.app.ui.util.Formats
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.time.Instant
 
@@ -61,12 +63,20 @@ fun CourseScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboardManager.current
-    val tabs = if (user.isTeacher) listOf("签到", "问答", "作业", "分析") else listOf("签到", "问答", "作业")
+    val tabs = if (user.isTeacher) listOf("签到", "问答", "作业", "分析") else listOf("签到", "问答", "作业", "成绩")
     var selectedTab by rememberSaveable(courseId) { mutableIntStateOf(0) }
 
     var showCreateAttendance by rememberSaveable { mutableStateOf(false) }
     var showCreateQuestion by rememberSaveable { mutableStateOf(false) }
     var showCreateAssignment by rememberSaveable { mutableStateOf(false) }
+    var showCourseSettings by rememberSaveable { mutableStateOf(false) }
+    var showEditCourse by rememberSaveable { mutableStateOf(false) }
+    var showDeleteCourseConfirm by rememberSaveable { mutableStateOf(false) }
+    var editQuestionTarget by remember { mutableStateOf<Question?>(null) }
+    var deleteQuestionTarget by remember { mutableStateOf<Question?>(null) }
+    var gradeTarget by remember { mutableStateOf<Submission?>(null) }
+    var removeMemberTarget by remember { mutableStateOf<Member?>(null) }
+    var temporaryPasswordInfo by remember { mutableStateOf<String?>(null) }
     var submissionTarget by remember { mutableStateOf<Assignment?>(null) }
     var sheetKind by remember { mutableStateOf<String?>(null) }
     var previewUrl by remember { mutableStateOf<String?>(null) }
@@ -79,8 +89,17 @@ fun CourseScreen(
         viewModel.messages.collect { snackbarHostState.showSnackbar(it) }
     }
     LaunchedEffect(selectedTab, state.course) {
-        if (user.isTeacher && selectedTab == 3 && state.course != null) {
-            viewModel.loadStats(courseId)
+        if (selectedTab == 3 && state.course != null) {
+            if (user.isTeacher) viewModel.loadStats(courseId) else viewModel.loadStudentStats(courseId)
+        }
+    }
+    LaunchedEffect(courseId) {
+        while (isActive) {
+            delay(5_000)
+            viewModel.refresh(courseId)
+            if (selectedTab == 3) {
+                if (user.isTeacher) viewModel.loadStats(courseId, force = true) else viewModel.loadStudentStats(courseId, force = true)
+            }
         }
     }
 
@@ -95,9 +114,14 @@ fun CourseScreen(
                 subtitle = state.course?.teacherName,
                 onBack = onBack,
                 actions = {
+                    IconButton(onClick = { showCourseSettings = true }) {
+                        Icon(Icons.Outlined.Settings, null, tint = Ink)
+                    }
                     RefreshIconButton(onClick = {
                         viewModel.refresh(courseId)
-                        if (selectedTab == 3) viewModel.loadStats(courseId, force = true)
+                        if (selectedTab == 3) {
+                            if (user.isTeacher) viewModel.loadStats(courseId, force = true) else viewModel.loadStudentStats(courseId, force = true)
+                        }
                     })
                 },
             )
@@ -163,6 +187,11 @@ fun CourseScreen(
                                     sheetKind = "question"
                                     viewModel.loadQuestionStats(it)
                                 },
+                                onEditQuestion = { editQuestionTarget = it },
+                                onCloseQuestion = { question ->
+                                    viewModel.closeQuestion(courseId, question.id) {}
+                                },
+                                onDeleteQuestion = { deleteQuestionTarget = it },
                                 onAnswer = { questionId, answer, onResult ->
                                     viewModel.answerQuestion(questionId, courseId, answer, onResult)
                                 },
@@ -180,11 +209,18 @@ fun CourseScreen(
                                 onPreview = { path -> previewUrl = path },
                             )
 
-                            else -> StatsContent(
-                                stats = state.stats,
-                                loading = state.statsLoading,
-                                onRefresh = { viewModel.loadStats(courseId, force = true) },
-                            )
+                            else -> if (user.isTeacher) {
+                                StatsContent(
+                                    stats = state.stats,
+                                    loading = state.statsLoading,
+                                    onRefresh = { viewModel.loadStats(courseId, force = true) },
+                                )
+                            } else {
+                                StudentStatsContent(
+                                    stats = state.studentStats,
+                                    loading = state.studentStatsLoading,
+                                )
+                            }
                         }
                         Spacer(Modifier.height(28.dp))
                     }
@@ -247,6 +283,133 @@ fun CourseScreen(
         )
     }
 
+    state.course?.let { course ->
+        if (showCourseSettings) {
+            CourseSettingsDialog(
+                course = course,
+                isTeacher = user.isTeacher,
+                onDismiss = { showCourseSettings = false },
+                onEdit = { showCourseSettings = false; showEditCourse = true },
+                onResetInvite = {
+                    showCourseSettings = false
+                    viewModel.resetInviteCode(courseId) {}
+                },
+                onArchive = {
+                    showCourseSettings = false
+                    viewModel.setArchived(courseId, !course.archived) {}
+                },
+                onDelete = { showCourseSettings = false; showDeleteCourseConfirm = true },
+                onLeave = {
+                    showCourseSettings = false
+                    viewModel.leaveCourse(courseId) { error ->
+                        if (error == null) onBack()
+                    }
+                },
+            )
+        }
+        if (showEditCourse) {
+            EditCourseDialog(
+                course = course,
+                onDismiss = { showEditCourse = false },
+                onSubmit = { name, description, onResult ->
+                    viewModel.updateCourse(courseId, name, description, onResult)
+                },
+            )
+        }
+        if (showDeleteCourseConfirm) {
+            AlertDialog(
+                onDismissRequest = { showDeleteCourseConfirm = false },
+                containerColor = Cream,
+                shape = RoundedCornerShape(24.dp),
+                title = { Text("删除课程？", style = MaterialTheme.typography.headlineMedium) },
+                text = { Text("课程将从列表隐藏并停止使用，历史数据保留。此操作不可在 APP 内撤销。", color = Muted) },
+                confirmButton = {
+                    TextButton(onClick = {
+                        showDeleteCourseConfirm = false
+                        viewModel.deleteCourse(courseId) { error ->
+                            if (error == null) onBack()
+                        }
+                    }) { Text("删除", color = Danger, fontWeight = FontWeight.Bold) }
+                },
+                dismissButton = { TextButton(onClick = { showDeleteCourseConfirm = false }) { Text("取消", color = Muted) } },
+            )
+        }
+    }
+
+    editQuestionTarget?.let { question ->
+        EditQuestionDialog(
+            question = question,
+            onDismiss = { editQuestionTarget = null },
+            onSubmit = { request, onResult ->
+                viewModel.updateQuestion(courseId, question.id, request, onResult)
+            },
+        )
+    }
+
+    deleteQuestionTarget?.let { question ->
+        AlertDialog(
+            onDismissRequest = { deleteQuestionTarget = null },
+            containerColor = Cream,
+            shape = RoundedCornerShape(24.dp),
+            title = { Text("删除题目？", style = MaterialTheme.typography.headlineMedium) },
+            text = { Text("题目将从问答列表隐藏，已有作答记录保留。", color = Muted) },
+            confirmButton = {
+                TextButton(onClick = {
+                    val target = question
+                    deleteQuestionTarget = null
+                    viewModel.deleteQuestion(courseId, target.id) {}
+                }) { Text("删除", color = Danger, fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = { TextButton(onClick = { deleteQuestionTarget = null }) { Text("取消", color = Muted) } },
+        )
+    }
+
+    gradeTarget?.let { submission ->
+        GradeSubmissionDialog(
+            submission = submission,
+            studentName = submission.studentName ?: "学生",
+            onDismiss = { gradeTarget = null },
+            onSubmit = { score, feedback, onResult ->
+                viewModel.gradeSubmission(
+                    assignmentId = submission.assignmentId,
+                    submissionId = submission.id,
+                    score = score,
+                    feedback = feedback,
+                    onResult = onResult,
+                )
+            },
+        )
+    }
+
+    removeMemberTarget?.let { member ->
+        AlertDialog(
+            onDismissRequest = { removeMemberTarget = null },
+            containerColor = Cream,
+            shape = RoundedCornerShape(24.dp),
+            title = { Text("移除学生？", style = MaterialTheme.typography.headlineMedium) },
+            text = { Text("将 ${member.name} 从课程成员中移除，历史签到、答案和作业保留。", color = Muted) },
+            confirmButton = {
+                TextButton(onClick = {
+                    val target = member
+                    removeMemberTarget = null
+                    viewModel.removeMember(courseId, target.studentId) {}
+                }) { Text("移除", color = Danger, fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = { TextButton(onClick = { removeMemberTarget = null }) { Text("取消", color = Muted) } },
+        )
+    }
+
+    temporaryPasswordInfo?.let { info ->
+        AlertDialog(
+            onDismissRequest = { temporaryPasswordInfo = null },
+            containerColor = Cream,
+            shape = RoundedCornerShape(24.dp),
+            title = { Text("临时密码已生成", style = MaterialTheme.typography.headlineMedium) },
+            text = { Text(info, color = Ink) },
+            confirmButton = { TextButton(onClick = { temporaryPasswordInfo = null }) { Text("知道了", color = Teal) } },
+        )
+    }
+
     if (sheetKind != null) {
         ModalBottomSheet(
             onDismissRequest = {
@@ -272,6 +435,17 @@ fun CourseScreen(
                     viewModel.clearSheet()
                 },
                 onPreview = { path -> previewUrl = path },
+                onRemoveMember = { removeMemberTarget = it },
+                onResetStudentPassword = { member ->
+                    viewModel.resetStudentPassword(courseId, member.studentId) { result, error ->
+                        if (result != null) {
+                            temporaryPasswordInfo = "学生：${result.studentNo}\n临时密码：${result.temporaryPassword}\n\n请让学生登录后立即修改密码。"
+                        } else if (error != null) {
+                            scope.launch { snackbarHostState.showSnackbar(error) }
+                        }
+                    }
+                },
+                onGradeSubmission = { gradeTarget = it },
                 modifier = Modifier
                     .fillMaxWidth()
                     .windowInsetsPadding(WindowInsets.navigationBars)
@@ -671,6 +845,9 @@ private fun QuestionSection(
     isTeacher: Boolean,
     onCreate: () -> Unit,
     onOpenStats: (Long) -> Unit,
+    onEditQuestion: (Question) -> Unit,
+    onCloseQuestion: (Question) -> Unit,
+    onDeleteQuestion: (Question) -> Unit,
     onAnswer: (Long, String, (String?) -> Unit) -> Unit,
 ) {
     Column {
@@ -690,7 +867,13 @@ private fun QuestionSection(
         } else {
             state.questions.forEachIndexed { index, question ->
                 if (isTeacher) {
-                    TeacherQuestionCard(question = question, onOpen = { onOpenStats(question.id) })
+                    TeacherQuestionCard(
+                        question = question,
+                        onOpen = { onOpenStats(question.id) },
+                        onEdit = { onEditQuestion(question) },
+                        onClose = { onCloseQuestion(question) },
+                        onDelete = { onDeleteQuestion(question) },
+                    )
                 } else {
                     StudentQuestionCard(question = question, onAnswer = onAnswer)
                 }
@@ -701,7 +884,13 @@ private fun QuestionSection(
 }
 
 @Composable
-private fun TeacherQuestionCard(question: Question, onOpen: () -> Unit) {
+private fun TeacherQuestionCard(
+    question: Question,
+    onOpen: () -> Unit,
+    onEdit: () -> Unit,
+    onClose: () -> Unit,
+    onDelete: () -> Unit,
+) {
     PulseCard(onClick = onOpen, contentPadding = PaddingValues(18.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             StatusBadge(
@@ -763,6 +952,14 @@ private fun TeacherQuestionCard(question: Question, onOpen: () -> Unit) {
             style = MaterialTheme.typography.bodySmall,
             color = Muted,
         )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+            horizontalArrangement = Arrangement.End,
+        ) {
+            TextButton(onClick = onEdit) { Text("编辑", color = Teal) }
+            TextButton(onClick = onClose) { Text("提前截止", color = Muted) }
+            TextButton(onClick = onDelete) { Text("删除", color = Danger) }
+        }
     }
 }
 
@@ -1090,6 +1287,18 @@ private fun AssignmentCard(
                                 overflow = TextOverflow.Ellipsis,
                             )
                         }
+                        submission.score?.let { score ->
+                            Text("得分：$score", style = MaterialTheme.typography.labelMedium, color = Teal, fontWeight = FontWeight.Bold)
+                        }
+                        if (!submission.feedback.isNullOrBlank()) {
+                            Text(
+                                "评语：${submission.feedback}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = InkSoft,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                     }
                 }
             }
@@ -1138,6 +1347,9 @@ private fun SheetContent(
     state: com.classpulse.app.ui.course.CourseUiState,
     onClose: () -> Unit,
     onPreview: (String) -> Unit,
+    onRemoveMember: (Member) -> Unit,
+    onResetStudentPassword: (Member) -> Unit,
+    onGradeSubmission: (Submission) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier.verticalScroll(rememberScrollState()).padding(bottom = 24.dp)) {
@@ -1170,11 +1382,21 @@ private fun SheetContent(
                                 Text(member.name, style = MaterialTheme.typography.bodyMedium, color = Ink)
                                 Text(member.studentNo, style = MaterialTheme.typography.labelMedium, color = Muted)
                             }
-                            Text(
-                                "加入于 ${Formats.date(member.joinedAt)}",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = Muted,
-                            )
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(
+                                    "加入于 ${Formats.date(member.joinedAt)}",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = Muted,
+                                )
+                                Row {
+                                    TextButton(onClick = { onResetStudentPassword(member) }) {
+                                        Text("重置密码", style = MaterialTheme.typography.labelSmall, color = Teal)
+                                    }
+                                    TextButton(onClick = { onRemoveMember(member) }) {
+                                        Text("移除", style = MaterialTheme.typography.labelSmall, color = Danger)
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -1333,7 +1555,16 @@ private fun SheetContent(
                             }
                         }
                         if (row.submission != null) {
-                            StatusBadge("已提交", containerColor = SuccessSoft, contentColor = Success, dotColor = Success)
+                            Column(horizontalAlignment = Alignment.End) {
+                                StatusBadge("已提交", containerColor = SuccessSoft, contentColor = Success, dotColor = Success)
+                                TextButton(onClick = { onGradeSubmission(requireNotNull(row.submission)) }) {
+                                    Text(
+                                        if (row.submission.score != null) "改评分" else "评分",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = Teal,
+                                    )
+                                }
+                            }
                         }
                     }
                 }

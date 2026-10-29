@@ -28,6 +28,9 @@ class ClassroomRepository(
 
     suspend fun me(): Result<User> = call { apiProvider.api.me() }
 
+    suspend fun changePassword(currentPassword: String, newPassword: String): Result<User> =
+        call { apiProvider.api.changePassword(ChangePasswordRequest(currentPassword, newPassword)) }
+
     suspend fun courses(): Result<List<CourseSummary>> = call { apiProvider.api.courses() }
 
     suspend fun createCourse(name: String, description: String): Result<CourseSummary> =
@@ -39,6 +42,25 @@ class ClassroomRepository(
     suspend fun course(courseId: Long): Result<CourseSummary> = call { apiProvider.api.course(courseId) }
 
     suspend fun members(courseId: Long): Result<List<Member>> = call { apiProvider.api.members(courseId) }
+
+    suspend fun updateCourse(courseId: Long, name: String, description: String): Result<CourseSummary> =
+        call { apiProvider.api.updateCourse(courseId, UpdateCourseRequest(name.trim(), description.trim())) }
+
+    suspend fun archiveCourse(courseId: Long): Result<CourseSummary> = call { apiProvider.api.archiveCourse(courseId) }
+
+    suspend fun unarchiveCourse(courseId: Long): Result<CourseSummary> = call { apiProvider.api.unarchiveCourse(courseId) }
+
+    suspend fun deleteCourse(courseId: Long): Result<Boolean> = call { apiProvider.api.deleteCourse(courseId) }
+
+    suspend fun resetInviteCode(courseId: Long): Result<CourseSummary> = call { apiProvider.api.resetInviteCode(courseId) }
+
+    suspend fun removeMember(courseId: Long, studentId: Long): Result<Boolean> =
+        call { apiProvider.api.removeMember(courseId, studentId) }
+
+    suspend fun leaveCourse(courseId: Long): Result<Boolean> = call { apiProvider.api.leaveCourse(courseId) }
+
+    suspend fun resetStudentPassword(courseId: Long, studentId: Long): Result<ResetStudentPassword> =
+        call { apiProvider.api.resetStudentPassword(courseId, studentId) }
 
     suspend fun attendance(courseId: Long): Result<List<Attendance>> =
         call { apiProvider.api.attendance(courseId) }
@@ -57,6 +79,13 @@ class ClassroomRepository(
 
     suspend fun createQuestion(courseId: Long, request: CreateQuestionRequest): Result<Question> =
         call { apiProvider.api.createQuestion(courseId, request) }
+
+    suspend fun updateQuestion(questionId: Long, request: UpdateQuestionRequest): Result<Question> =
+        call { apiProvider.api.updateQuestion(questionId, request) }
+
+    suspend fun closeQuestion(questionId: Long): Result<Question> = call { apiProvider.api.closeQuestion(questionId) }
+
+    suspend fun deleteQuestion(questionId: Long): Result<Boolean> = call { apiProvider.api.deleteQuestion(questionId) }
 
     suspend fun answer(questionId: Long, answer: String): Result<AnswerResult> =
         call { apiProvider.api.answer(questionId, AnswerRequest(answer.trim())) }
@@ -90,7 +119,12 @@ class ClassroomRepository(
     suspend fun assignmentSubmissions(assignmentId: Long): Result<AssignmentSubmissions> =
         call { apiProvider.api.assignmentSubmissions(assignmentId) }
 
+    suspend fun gradeSubmission(submissionId: Long, score: Int, feedback: String?): Result<Submission> =
+        call { apiProvider.api.gradeSubmission(submissionId, GradeSubmissionRequest(score, feedback)) }
+
     suspend fun stats(courseId: Long): Result<CourseStats> = call { apiProvider.api.stats(courseId) }
+
+    suspend fun myStats(courseId: Long): Result<StudentCourseStats> = call { apiProvider.api.myStats(courseId) }
 
     fun imageUrl(path: String): String = sessionManager.fullUrl(path)
 

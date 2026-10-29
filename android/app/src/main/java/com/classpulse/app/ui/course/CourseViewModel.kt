@@ -24,6 +24,8 @@ data class CourseUiState(
     val assignments: List<Assignment> = emptyList(),
     val stats: CourseStats? = null,
     val statsLoading: Boolean = false,
+    val studentStats: StudentCourseStats? = null,
+    val studentStatsLoading: Boolean = false,
     val error: String? = null,
     val sheetLoading: Boolean = false,
     val sheetError: String? = null,
@@ -344,6 +346,204 @@ class CourseViewModel(application: Application) : AndroidViewModel(application) 
                     _state.update { state ->
                         state.copy(sheetLoading = false, sheetError = it.message ?: "提交情况加载失败")
                     }
+                }
+        }
+    }
+
+    fun loadStudentStats(courseId: Long, force: Boolean = false) {
+        if (_state.value.studentStatsLoading) return
+        if (_state.value.studentStats != null && !force) return
+        _state.update { it.copy(studentStatsLoading = true) }
+        viewModelScope.launch {
+            repository.myStats(courseId)
+                .onSuccess { stats -> _state.update { it.copy(studentStats = stats, studentStatsLoading = false) } }
+                .onFailure { failure ->
+                    _state.update { it.copy(studentStatsLoading = false) }
+                    _messages.emit(failure.message ?: "个人成绩加载失败")
+                }
+        }
+    }
+
+    fun updateCourse(courseId: Long, name: String, description: String, onResult: (String?) -> Unit) {
+        if (_state.value.busy) return
+        viewModelScope.launch {
+            _state.update { it.copy(busy = true) }
+            repository.updateCourse(courseId, name, description)
+                .onSuccess { updated ->
+                    _state.update { it.copy(busy = false, course = updated) }
+                    _messages.emit("课程信息已更新")
+                    onResult(null)
+                }
+                .onFailure {
+                    _state.update { state -> state.copy(busy = false) }
+                    onResult(it.message ?: "更新课程失败")
+                }
+        }
+    }
+
+    fun setArchived(courseId: Long, archived: Boolean, onResult: (String?) -> Unit) {
+        if (_state.value.busy) return
+        viewModelScope.launch {
+            _state.update { it.copy(busy = true) }
+            val result = if (archived) repository.archiveCourse(courseId) else repository.unarchiveCourse(courseId)
+            result.onSuccess { updated ->
+                _state.update { it.copy(busy = false, course = updated) }
+                _messages.emit(if (archived) "课程已归档" else "课程已取消归档")
+                onResult(null)
+            }.onFailure {
+                _state.update { state -> state.copy(busy = false) }
+                onResult(it.message ?: "课程状态更新失败")
+            }
+        }
+    }
+
+    fun deleteCourse(courseId: Long, onResult: (String?) -> Unit) {
+        if (_state.value.busy) return
+        viewModelScope.launch {
+            _state.update { it.copy(busy = true) }
+            repository.deleteCourse(courseId)
+                .onSuccess {
+                    _state.update { it.copy(busy = false) }
+                    _messages.emit("课程已删除")
+                    onResult(null)
+                }
+                .onFailure {
+                    _state.update { state -> state.copy(busy = false) }
+                    onResult(it.message ?: "删除课程失败")
+                }
+        }
+    }
+
+    fun resetInviteCode(courseId: Long, onResult: (String?) -> Unit) {
+        if (_state.value.busy) return
+        viewModelScope.launch {
+            _state.update { it.copy(busy = true) }
+            repository.resetInviteCode(courseId)
+                .onSuccess { updated ->
+                    _state.update { it.copy(busy = false, course = updated) }
+                    _messages.emit("邀请码已重置")
+                    onResult(null)
+                }
+                .onFailure {
+                    _state.update { state -> state.copy(busy = false) }
+                    onResult(it.message ?: "邀请码重置失败")
+                }
+        }
+    }
+
+    fun removeMember(courseId: Long, studentId: Long, onResult: (String?) -> Unit) {
+        if (_state.value.busy) return
+        viewModelScope.launch {
+            _state.update { it.copy(busy = true) }
+            repository.removeMember(courseId, studentId)
+                .onSuccess { load(courseId, quiet = true); onResult(null) }
+                .onFailure { onResult(it.message ?: "移除学生失败") }
+            _state.update { it.copy(busy = false) }
+        }
+    }
+
+    fun leaveCourse(courseId: Long, onResult: (String?) -> Unit) {
+        if (_state.value.busy) return
+        viewModelScope.launch {
+            _state.update { it.copy(busy = true) }
+            repository.leaveCourse(courseId)
+                .onSuccess { _messages.emit("已退出课程"); onResult(null) }
+                .onFailure { onResult(it.message ?: "退出课程失败") }
+            _state.update { it.copy(busy = false) }
+        }
+    }
+
+    fun resetStudentPassword(
+        courseId: Long,
+        studentId: Long,
+        onResult: (ResetStudentPassword?, String?) -> Unit,
+    ) {
+        if (_state.value.busy) return
+        viewModelScope.launch {
+            _state.update { it.copy(busy = true) }
+            repository.resetStudentPassword(courseId, studentId)
+                .onSuccess { onResult(it, null) }
+                .onFailure { onResult(null, it.message ?: "重置密码失败") }
+            _state.update { it.copy(busy = false) }
+        }
+    }
+
+    fun updateQuestion(
+        courseId: Long,
+        questionId: Long,
+        request: UpdateQuestionRequest,
+        onResult: (String?) -> Unit,
+    ) {
+        if (_state.value.busy) return
+        viewModelScope.launch {
+            _state.update { it.copy(busy = true) }
+            repository.updateQuestion(questionId, request)
+                .onSuccess {
+                    val refreshed = repository.questions(courseId)
+                    _state.update { state ->
+                        state.copy(busy = false, questions = refreshed.getOrDefault(state.questions))
+                    }
+                    _messages.emit("题目已更新")
+                    onResult(null)
+                }
+                .onFailure {
+                    _state.update { state -> state.copy(busy = false) }
+                    onResult(it.message ?: "更新题目失败")
+                }
+        }
+    }
+
+    fun closeQuestion(courseId: Long, questionId: Long, onResult: (String?) -> Unit) {
+        viewModelScope.launch {
+            repository.closeQuestion(questionId)
+                .onSuccess {
+                    val refreshed = repository.questions(courseId)
+                    _state.update { state -> state.copy(questions = refreshed.getOrDefault(state.questions)) }
+                    _messages.emit("题目已提前截止")
+                    onResult(null)
+                }
+                .onFailure { onResult(it.message ?: "截止题目失败") }
+        }
+    }
+
+    fun deleteQuestion(courseId: Long, questionId: Long, onResult: (String?) -> Unit) {
+        viewModelScope.launch {
+            repository.deleteQuestion(questionId)
+                .onSuccess {
+                    val refreshed = repository.questions(courseId)
+                    _state.update { state -> state.copy(questions = refreshed.getOrDefault(state.questions)) }
+                    _messages.emit("题目已删除")
+                    onResult(null)
+                }
+                .onFailure { onResult(it.message ?: "删除题目失败") }
+        }
+    }
+
+    fun gradeSubmission(
+        assignmentId: Long,
+        submissionId: Long,
+        score: Int,
+        feedback: String?,
+        onResult: (String?) -> Unit,
+    ) {
+        if (_state.value.busy) return
+        viewModelScope.launch {
+            _state.update { it.copy(busy = true) }
+            repository.gradeSubmission(submissionId, score, feedback)
+                .onSuccess {
+                    val refreshed = repository.assignmentSubmissions(assignmentId)
+                    _state.update { state ->
+                        state.copy(
+                            busy = false,
+                            assignmentSubmissions = refreshed.getOrDefault(state.assignmentSubmissions),
+                        )
+                    }
+                    _messages.emit("评分已保存")
+                    onResult(null)
+                }
+                .onFailure {
+                    _state.update { state -> state.copy(busy = false) }
+                    onResult(it.message ?: "评分失败")
                 }
         }
     }

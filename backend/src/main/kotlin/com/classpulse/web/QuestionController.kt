@@ -32,4 +32,20 @@ class QuestionController(private val questionService: QuestionService) {
     @GetMapping("/questions/{questionId}/stats")
     fun stats(@PathVariable questionId: Long): ApiResponse<QuestionStatsDto> =
         ApiResponse.success(questionService.stats(questionId))
+
+    @PutMapping("/questions/{questionId}")
+    fun update(
+        @PathVariable questionId: Long,
+        @Valid @RequestBody request: UpdateQuestionRequest,
+    ): ApiResponse<QuestionDto> = ApiResponse.success(questionService.update(questionId, request))
+
+    @PostMapping("/questions/{questionId}/close")
+    fun close(@PathVariable questionId: Long): ApiResponse<QuestionDto> =
+        ApiResponse.success(questionService.close(questionId))
+
+    @DeleteMapping("/questions/{questionId}")
+    fun delete(@PathVariable questionId: Long): ApiResponse<Boolean> {
+        questionService.delete(questionId)
+        return ApiResponse.success(true)
+    }
 }

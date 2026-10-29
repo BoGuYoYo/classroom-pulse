@@ -29,6 +29,7 @@ class QuestionService(
     @Transactional
     fun create(courseId: Long, request: CreateQuestionRequest): QuestionDto {
         val course = accessGuard.teacherCourse(courseId)
+        accessGuard.ensureWritable(course)
         val type = request.type
             ?: throw ApiException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "题型不能为空")
         val deadline = request.deadlineAt
@@ -82,7 +83,7 @@ class QuestionService(
     @Transactional(readOnly = true)
     fun list(courseId: Long): List<QuestionDto> {
         accessGuard.readableCourse(courseId)
-        return questionRepository.findByCourseIdOrderByCreatedAtDesc(courseId).map { it.toDto() }
+        return questionRepository.findByCourseIdAndDeletedAtIsNullOrderByCreatedAtDesc(courseId).map { it.toDto() }
     }
 
     @Transactional
@@ -91,6 +92,7 @@ class QuestionService(
         val question = findQuestion(questionId)
         val courseId = requireNotNull(question.course.id)
         accessGuard.ensureStudentMember(courseId, principal.id)
+        accessGuard.ensureWritable(question.course)
         val now = Instant.now()
         if (!now.isBefore(question.deadlineAt)) {
             throw ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "QUESTION_CLOSED", "本题已截止，无法作答")
@@ -147,6 +149,81 @@ class QuestionService(
         )
     }
 
+    @Transactional
+    fun update(questionId: Long, request: UpdateQuestionRequest): QuestionDto {
+        val question = findQuestion(questionId)
+        val course = accessGuard.teacherCourse(requireNotNull(question.course.id))
+        accessGuard.ensureWritable(course)
+        val deadline = request.deadlineAt
+            ?: throw ApiException(HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "截止时间不能为空")
+        val hasAnswers = answerRepository.countByQuestionId(questionId) > 0
+        val currentOptions = options(question)
+        val newOptions: List<QuestionOptionDto>
+        val newAnswer: String
+        when (question.type) {
+            QuestionType.SINGLE_CHOICE, QuestionType.MULTIPLE_CHOICE -> {
+                val texts = request.options.orEmpty().map { it.trim() }
+                if (texts.size !in 2..6 || texts.any { it.isBlank() }) {
+                    throw ApiException(HttpStatus.BAD_REQUEST, "INVALID_OPTIONS", "选择题需要 2-6 个非空选项")
+                }
+                if (texts.map { it.lowercase(Locale.ROOT) }.distinct().size != texts.size) {
+                    throw ApiException(HttpStatus.BAD_REQUEST, "INVALID_OPTIONS", "选项内容不能重复")
+                }
+                newOptions = texts.mapIndexed { index, text ->
+                    QuestionOptionDto(key = ('A'.code + index).toChar().toString(), text = text)
+                }
+                val answerKeys = choiceKeys(request.correctAnswer)
+                if (question.type == QuestionType.SINGLE_CHOICE && answerKeys.size != 1) {
+                    throw ApiException(HttpStatus.BAD_REQUEST, "INVALID_ANSWER", "单选题需要且只能有一个正确答案")
+                }
+                if (question.type == QuestionType.MULTIPLE_CHOICE && answerKeys.size < 2) {
+                    throw ApiException(HttpStatus.BAD_REQUEST, "INVALID_ANSWER", "多选题至少需要两个正确答案")
+                }
+                if (answerKeys.distinct().size != answerKeys.size) {
+                    throw ApiException(HttpStatus.BAD_REQUEST, "INVALID_ANSWER", "参考答案不能重复")
+                }
+                if (answerKeys.any { key -> newOptions.none { it.key == key } }) {
+                    throw ApiException(HttpStatus.BAD_REQUEST, "INVALID_ANSWER", "选择题参考答案应为有效选项字母")
+                }
+                newAnswer = newOptions.filter { it.key in answerKeys }.joinToString(",") { it.key }
+            }
+
+            QuestionType.FILL_BLANK -> {
+                newOptions = emptyList()
+                newAnswer = request.correctAnswer.trim()
+            }
+        }
+        if (hasAnswers && (newOptions != currentOptions || newAnswer != question.standardAnswer)) {
+            throw ApiException(HttpStatus.CONFLICT, "QUESTION_HAS_ANSWERS", "已有学生作答，只能修改题干和截止时间")
+        }
+        question.prompt = request.prompt.trim()
+        question.deadlineAt = deadline
+        if (!hasAnswers) {
+            question.optionsJson = if (newOptions.isEmpty()) null else objectMapper.writeValueAsString(newOptions)
+            question.standardAnswer = newAnswer
+        }
+        questionRepository.save(question)
+        return question.toDto()
+    }
+
+    @Transactional
+    fun close(questionId: Long): QuestionDto {
+        val question = findQuestion(questionId)
+        val course = accessGuard.teacherCourse(requireNotNull(question.course.id))
+        accessGuard.ensureWritable(course)
+        question.deadlineAt = Instant.now()
+        questionRepository.save(question)
+        return question.toDto()
+    }
+
+    @Transactional
+    fun delete(questionId: Long) {
+        val question = findQuestion(questionId)
+        accessGuard.teacherCourse(requireNotNull(question.course.id))
+        question.deletedAt = Instant.now()
+        questionRepository.save(question)
+    }
+
     @Transactional(readOnly = true)
     fun stats(questionId: Long): QuestionStatsDto {
         accessGuard.requireTeacher()
@@ -189,8 +266,14 @@ class QuestionService(
         )
     }
 
-    private fun findQuestion(id: Long): Question = questionRepository.findById(id).orElseThrow {
-        ApiException(HttpStatus.NOT_FOUND, "QUESTION_NOT_FOUND", "题目不存在")
+    private fun findQuestion(id: Long): Question {
+        val question = questionRepository.findById(id).orElseThrow {
+            ApiException(HttpStatus.NOT_FOUND, "QUESTION_NOT_FOUND", "题目不存在")
+        }
+        if (question.deletedAt != null) {
+            throw ApiException(HttpStatus.NOT_FOUND, "QUESTION_NOT_FOUND", "题目不存在")
+        }
+        return question
     }
 
     private fun choiceKeys(raw: String): List<String> =

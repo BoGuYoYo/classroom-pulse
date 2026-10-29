@@ -55,6 +55,12 @@ class Course(
 
     @Column(name = "created_at", nullable = false)
     var createdAt: Instant = Instant.now(),
+
+    @Column(name = "archived_at")
+    var archivedAt: Instant? = null,
+
+    @Column(name = "deleted_at")
+    var deletedAt: Instant? = null,
 )
 
 @Entity
@@ -161,6 +167,9 @@ class Question(
 
     @Column(name = "created_at", nullable = false)
     var createdAt: Instant = Instant.now(),
+
+    @Column(name = "deleted_at")
+    var deletedAt: Instant? = null,
 )
 
 @Entity
@@ -253,4 +262,13 @@ class Submission(
 
     @Column(name = "updated_at", nullable = false)
     var updatedAt: Instant = Instant.now(),
+
+    @Column
+    var score: Int? = null,
+
+    @Column(columnDefinition = "TEXT")
+    var feedback: String? = null,
+
+    @Column(name = "graded_at")
+    var gradedAt: Instant? = null,
 )

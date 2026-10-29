@@ -27,6 +27,7 @@ class AttendanceService(
     @Transactional
     fun create(courseId: Long, request: CreateAttendanceRequest): AttendanceDto {
         val course = accessGuard.teacherCourse(courseId)
+        accessGuard.ensureWritable(course)
         val now = Instant.now()
         val session = sessionRepository.save(
             AttendanceSession(
@@ -89,6 +90,7 @@ class AttendanceService(
         val session = findSession(sessionId)
         val courseId = requireNotNull(session.course.id)
         accessGuard.ensureStudentMember(courseId, principal.id)
+        accessGuard.ensureWritable(session.course)
         val now = Instant.now()
         if (now.isBefore(session.startsAt) || !now.isBefore(session.endsAt)) {
             throw ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "ATTENDANCE_CLOSED", "签到已结束或尚未开始")

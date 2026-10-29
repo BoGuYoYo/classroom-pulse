@@ -5,12 +5,16 @@ import com.classpulse.domain.CourseMember
 import com.classpulse.domain.Role
 import com.classpulse.repository.CourseMemberRepository
 import com.classpulse.repository.CourseRepository
+import com.classpulse.repository.UserRepository
 import com.classpulse.web.ApiException
 import com.classpulse.web.dto.CourseSummaryDto
 import com.classpulse.web.dto.CreateCourseRequest
 import com.classpulse.web.dto.JoinCourseRequest
 import com.classpulse.web.dto.MemberDto
+import com.classpulse.web.dto.ResetStudentPasswordDto
+import com.classpulse.web.dto.UpdateCourseRequest
 import org.springframework.http.HttpStatus
+import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.security.SecureRandom
@@ -20,6 +24,8 @@ import java.time.Instant
 class CourseService(
     private val courseRepository: CourseRepository,
     private val courseMemberRepository: CourseMemberRepository,
+    private val userRepository: UserRepository,
+    private val passwordEncoder: PasswordEncoder,
     private val accessGuard: AccessGuard,
 ) {
     private val random = SecureRandom()
@@ -47,6 +53,10 @@ class CourseService(
         val student = accessGuard.currentUser()
         val course = courseRepository.findByInviteCode(request.inviteCode.trim().uppercase())
             ?: throw ApiException(HttpStatus.NOT_FOUND, "INVALID_INVITE_CODE", "邀请码无效，请核对后重试")
+        if (course.deletedAt != null) {
+            throw ApiException(HttpStatus.NOT_FOUND, "INVALID_INVITE_CODE", "邀请码无效，请核对后重试")
+        }
+        accessGuard.ensureWritable(course)
         if (courseMemberRepository.existsByCourseIdAndStudentId(requireNotNull(course.id), principal.id)) {
             throw ApiException(HttpStatus.CONFLICT, "ALREADY_MEMBER", "你已加入该课程")
         }
@@ -69,22 +79,26 @@ class CourseService(
     fun list(): List<CourseSummaryDto> {
         val principal = accessGuard.principal()
         return if (principal.role == Role.TEACHER) {
-            courseRepository.findByTeacherIdOrderByCreatedAtDesc(principal.id).map { course ->
-                course.toSummary(
-                    memberCount = courseMemberRepository.countByCourseId(requireNotNull(course.id)),
-                    joinedAt = null,
-                    includeInviteCode = true,
-                )
-            }
+            courseRepository.findByTeacherIdOrderByCreatedAtDesc(principal.id)
+                .filter { it.deletedAt == null }
+                .map { course ->
+                    course.toSummary(
+                        memberCount = courseMemberRepository.countByCourseId(requireNotNull(course.id)),
+                        joinedAt = null,
+                        includeInviteCode = true,
+                    )
+                }
         } else {
-            courseMemberRepository.findByStudentIdOrderByJoinedAtDesc(principal.id).map { membership ->
-                val course = membership.course
-                course.toSummary(
-                    memberCount = courseMemberRepository.countByCourseId(requireNotNull(course.id)),
-                    joinedAt = membership.joinedAt,
-                    includeInviteCode = false,
-                )
-            }
+            courseMemberRepository.findByStudentIdOrderByJoinedAtDesc(principal.id)
+                .filter { it.course.deletedAt == null }
+                .map { membership ->
+                    val course = membership.course
+                    course.toSummary(
+                        memberCount = courseMemberRepository.countByCourseId(requireNotNull(course.id)),
+                        joinedAt = membership.joinedAt,
+                        includeInviteCode = false,
+                    )
+                }
         }
     }
 
@@ -117,6 +131,88 @@ class CourseService(
         }
     }
 
+    @Transactional
+    fun update(courseId: Long, request: UpdateCourseRequest): CourseSummaryDto {
+        val course = accessGuard.teacherCourse(courseId)
+        course.name = request.name.trim()
+        course.description = request.description.trim()
+        courseRepository.save(course)
+        return course.toSummary(
+            memberCount = courseMemberRepository.countByCourseId(courseId),
+            joinedAt = null,
+            includeInviteCode = true,
+        )
+    }
+
+    @Transactional
+    fun setArchived(courseId: Long, archived: Boolean): CourseSummaryDto {
+        val course = accessGuard.teacherCourse(courseId)
+        course.archivedAt = if (archived) Instant.now() else null
+        courseRepository.save(course)
+        return course.toSummary(
+            memberCount = courseMemberRepository.countByCourseId(courseId),
+            joinedAt = null,
+            includeInviteCode = true,
+        )
+    }
+
+    @Transactional
+    fun delete(courseId: Long) {
+        val course = accessGuard.teacherCourse(courseId)
+        course.deletedAt = Instant.now()
+        course.archivedAt = course.archivedAt ?: course.deletedAt
+        courseRepository.save(course)
+    }
+
+    @Transactional
+    fun resetInviteCode(courseId: Long): CourseSummaryDto {
+        val course = accessGuard.teacherCourse(courseId)
+        course.inviteCode = generateInviteCode()
+        courseRepository.save(course)
+        return course.toSummary(
+            memberCount = courseMemberRepository.countByCourseId(courseId),
+            joinedAt = null,
+            includeInviteCode = true,
+        )
+    }
+
+    @Transactional
+    fun removeMember(courseId: Long, studentId: Long) {
+        accessGuard.teacherCourse(courseId)
+        val membership = courseMemberRepository.findByCourseIdAndStudentId(courseId, studentId)
+            ?: throw ApiException(HttpStatus.NOT_FOUND, "MEMBER_NOT_FOUND", "学生不在该课程中")
+        courseMemberRepository.delete(membership)
+    }
+
+    @Transactional
+    fun leave(courseId: Long) {
+        val principal = accessGuard.requireStudent()
+        accessGuard.studentCourse(courseId)
+        val membership = courseMemberRepository.findByCourseIdAndStudentId(courseId, principal.id)
+            ?: throw ApiException(HttpStatus.NOT_FOUND, "MEMBER_NOT_FOUND", "你尚未加入该课程")
+        courseMemberRepository.delete(membership)
+    }
+
+    @Transactional
+    fun resetStudentPassword(courseId: Long, studentId: Long): ResetStudentPasswordDto {
+        accessGuard.teacherCourse(courseId)
+        val membership = courseMemberRepository.findByCourseIdAndStudentId(courseId, studentId)
+            ?: throw ApiException(HttpStatus.NOT_FOUND, "MEMBER_NOT_FOUND", "学生不在该课程中")
+        val student = userRepository.findById(studentId).orElseThrow {
+            throw ApiException(HttpStatus.NOT_FOUND, "STUDENT_NOT_FOUND", "学生不存在")
+        }
+        val temporaryPassword = "Tmp-" + buildString {
+            repeat(12) { append(alphabet[random.nextInt(alphabet.length)]) }
+        }
+        student.passwordHash = passwordEncoder.encode(temporaryPassword)
+        userRepository.save(student)
+        return ResetStudentPasswordDto(
+            studentId = studentId,
+            studentNo = membership.student.username,
+            temporaryPassword = temporaryPassword,
+        )
+    }
+
     private fun generateInviteCode(): String {
         repeat(20) {
             val code = buildString {
@@ -142,5 +238,6 @@ class CourseService(
         memberCount = memberCount,
         createdAt = createdAt,
         joinedAt = joinedAt,
+        archived = archivedAt != null,
     )
 }

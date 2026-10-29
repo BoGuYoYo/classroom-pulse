@@ -463,6 +463,143 @@ class ClassroomApiFlowTest {
         assertTrue(stored.passwordHash.startsWith("$2"))
     }
 
+    @Test
+    fun courseLifecycleAndAccountManagement() {
+        val lifecycleToken = registerOrLogin("LC9001", "生命周期学生")
+        val created = postJson(
+            "/api/v1/courses",
+            mapOf("name" to "生命周期课程", "description" to "测试归档和删除"),
+            teacherToken,
+        ).andExpect(status().isCreated).andReturn().response.contentAsString
+        val course = objectMapper.readTree(created).path("data")
+        val lifecycleCourseId = course.path("id").asLong()
+        val invite = course.path("inviteCode").asText()
+        postJson("/api/v1/courses/join", mapOf("inviteCode" to invite), lifecycleToken)
+            .andExpect(status().isOk)
+        putJson(
+            "/api/v1/courses/$lifecycleCourseId",
+            mapOf("name" to "生命周期课程（改名）", "description" to "已更新"),
+            teacherToken,
+        ).andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.name").value("生命周期课程（改名）"))
+        postJson("/api/v1/courses/$lifecycleCourseId/archive", emptyMap<String, String>(), teacherToken)
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.archived").value(true))
+        postJson(
+            "/api/v1/courses/$lifecycleCourseId/questions",
+            mapOf(
+                "type" to QuestionType.FILL_BLANK.name,
+                "prompt" to "归档课程不能出题",
+                "correctAnswer" to "x",
+                "deadlineAt" to Instant.now().plus(2, ChronoUnit.DAYS).toString(),
+            ),
+            teacherToken,
+        ).andExpect(status().isConflict)
+            .andExpect(jsonPath("$.code").value("COURSE_ARCHIVED"))
+        postJson("/api/v1/courses/$lifecycleCourseId/unarchive", emptyMap<String, String>(), teacherToken)
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.archived").value(false))
+        val resetInvite = postJson(
+            "/api/v1/courses/$lifecycleCourseId/invite-code/reset",
+            emptyMap<String, String>(),
+            teacherToken,
+        ).andExpect(status().isOk).andReturn().response.contentAsString
+        val newInvite = objectMapper.readTree(resetInvite).path("data").path("inviteCode").asText()
+        assertNotEquals(invite, newInvite)
+
+        putJson(
+            "/api/v1/auth/password",
+            mapOf("currentPassword" to "Student@123", "newPassword" to "NewPass@123"),
+            lifecycleToken,
+        ).andExpect(status().isOk)
+        login("LC9001", "NewPass@123")
+
+        val lifecycleStudent = userRepository.findByUsername("LC9001")!!
+        val resetPassword = postJson(
+            "/api/v1/courses/$lifecycleCourseId/members/${lifecycleStudent.id}/reset-password",
+            emptyMap<String, String>(),
+            teacherToken,
+        ).andExpect(status().isOk).andReturn().response.contentAsString
+        val tempPassword = objectMapper.readTree(resetPassword).path("data").path("temporaryPassword").asText()
+        login("LC9001", tempPassword)
+
+        deleteJson("/api/v1/courses/$lifecycleCourseId/members/${lifecycleStudent.id}", teacherToken)
+            .andExpect(status().isOk)
+        deleteJson("/api/v1/courses/$lifecycleCourseId", teacherToken)
+            .andExpect(status().isOk)
+        getJson("/api/v1/courses/$lifecycleCourseId", teacherToken)
+            .andExpect(status().isNotFound)
+    }
+
+    @Test
+    fun questionEditingGradingAndStudentSummary() {
+        val createdQuestion = postJson(
+            "/api/v1/courses/$courseId/questions",
+            mapOf(
+                "type" to QuestionType.FILL_BLANK.name,
+                "prompt" to "可编辑题目",
+                "correctAnswer" to "42",
+                "deadlineAt" to Instant.now().plus(2, ChronoUnit.DAYS).toString(),
+            ),
+            teacherToken,
+        ).andExpect(status().isCreated).andReturn().response.contentAsString
+        val questionId = objectMapper.readTree(createdQuestion).path("data").path("id").asLong()
+        putJson(
+            "/api/v1/questions/$questionId",
+            mapOf(
+                "prompt" to "已编辑题干",
+                "options" to null,
+                "correctAnswer" to "43",
+                "deadlineAt" to Instant.now().plus(2, ChronoUnit.DAYS).toString(),
+            ),
+            teacherToken,
+        ).andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.prompt").value("已编辑题干"))
+        postJson("/api/v1/questions/$questionId/close", emptyMap<String, String>(), teacherToken)
+            .andExpect(status().isOk)
+        postJson("/api/v1/questions/$questionId/answers", mapOf("answer" to "43"), studentToken)
+            .andExpect(status().isUnprocessableEntity)
+            .andExpect(jsonPath("$.code").value("QUESTION_CLOSED"))
+        deleteJson("/api/v1/questions/$questionId", teacherToken)
+            .andExpect(status().isOk)
+        getJson("/api/v1/courses/$courseId/questions", teacherToken)
+            .andExpect(jsonPath("$.data.length()").value(0))
+
+        val assignmentBody = postJson(
+            "/api/v1/courses/$courseId/assignments",
+            mapOf(
+                "title" to "评分作业",
+                "description" to "测试评分",
+                "deadlineAt" to Instant.now().plus(3, ChronoUnit.DAYS).toString(),
+            ),
+            teacherToken,
+        ).andExpect(status().isCreated).andReturn().response.contentAsString
+        val assignmentId = objectMapper.readTree(assignmentBody).path("data").path("id").asLong()
+        val jpeg = Base64.getDecoder().decode(
+            "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAH/AP/EABQQAQAAAAAAAAAAAAAAAAAAABD/2gAIAQEAAQUCf//EABQRAQAAAAAAAAAAAAAAAAAAABD/2gAIAQMBAT8Bf//EABQRAQAAAAAAAAAAAAAAAAAAABD/2gAIAQIBAT8Bf//EABQQAQAAAAAAAAAAAAAAAAAAABD/2gAIAQEABj8Cf//EABQQAQAAAAAAAAAAAAAAAAAAABD/2gAIAQEAAT8hf//aAAwDAQACAAMAAAAQH//EABQRAQAAAAAAAAAAAAAAAAAAABD/2gAIAQMBAT8Qf//EABQRAQAAAAAAAAAAAAAAAAAAABD/2gAIAQIBAT8Qf//EABQQAQAAAAAAAAAAAAAAAAAAABD/2gAIAQEAAT8Qf//Z",
+        )
+        val upload = mockMvc.perform(
+            multipart("/api/v1/assignments/$assignmentId/submissions")
+                .file(MockMultipartFile("file", "grade.jpg", "image/jpeg", jpeg))
+                .param("note", "待评分")
+                .header("Authorization", "Bearer $studentToken"),
+        ).andExpect(status().isOk).andReturn().response.contentAsString
+        val submissionId = objectMapper.readTree(upload).path("data").path("id").asLong()
+        putJson(
+            "/api/v1/submissions/$submissionId/grade",
+            mapOf("score" to 88, "feedback" to "结构清晰"),
+            teacherToken,
+        ).andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.score").value(88))
+        getJson("/api/v1/courses/$courseId/assignments", studentToken)
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data[0].mySubmission.score").value(88))
+        getJson("/api/v1/courses/$courseId/my-stats", studentToken)
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.data.gradedCount").value(1))
+            .andExpect(jsonPath("$.data.averageScore").value(88.0))
+    }
+
     private fun createTeacher(username: String, name: String) {
         userRepository.save(
             User(
@@ -506,6 +643,20 @@ class ClassroomApiFlowTest {
 
     private fun getJson(path: String, token: String) =
         mockMvc.perform(get(path).header("Authorization", "Bearer $token"))
+
+    private fun putJson(path: String, body: Any, token: String?) =
+        mockMvc.perform(
+            put(path)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(body))
+                .apply { if (token != null) header("Authorization", "Bearer $token") },
+        )
+
+    private fun deleteJson(path: String, token: String?) =
+        mockMvc.perform(
+            delete(path)
+                .apply { if (token != null) header("Authorization", "Bearer $token") },
+        )
 
     companion object {
         private val UPLOAD_DIR = Files.createTempDirectory("classroom-pulse-test-uploads")

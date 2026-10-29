@@ -36,6 +36,7 @@ class AssignmentService(
     @Transactional
     fun create(courseId: Long, request: CreateAssignmentRequest): AssignmentDto {
         val course = accessGuard.teacherCourse(courseId)
+        accessGuard.ensureWritable(course)
         val assignment = assignmentRepository.save(
             Assignment(
                 course = course,
@@ -60,6 +61,7 @@ class AssignmentService(
         val assignment = findAssignment(assignmentId)
         val courseId = requireNotNull(assignment.course.id)
         accessGuard.ensureStudentMember(courseId, principal.id)
+        accessGuard.ensureWritable(assignment.course)
         if (!Instant.now().isBefore(assignment.deadlineAt)) {
             throw ApiException(HttpStatus.UNPROCESSABLE_ENTITY, "ASSIGNMENT_CLOSED", "作业已截止，无法提交")
         }
@@ -170,6 +172,21 @@ class AssignmentService(
         )
     }
 
+    @Transactional
+    fun gradeSubmission(submissionId: Long, request: GradeSubmissionRequest): SubmissionDto {
+        accessGuard.requireTeacher()
+        val submission = submissionRepository.findById(submissionId).orElseThrow {
+            ApiException(HttpStatus.NOT_FOUND, "SUBMISSION_NOT_FOUND", "作业提交不存在")
+        }
+        val courseId = requireNotNull(submission.assignment.course.id)
+        accessGuard.teacherCourse(courseId)
+        submission.score = request.score
+        submission.feedback = request.feedback?.trim()?.ifBlank { null }
+        submission.gradedAt = Instant.now()
+        submissionRepository.save(submission)
+        return submission.toDto(includeStudent = true)
+    }
+
     @Transactional(readOnly = true)
     fun image(submissionId: Long): StoredImage {
         val principal = accessGuard.principal()
@@ -233,6 +250,9 @@ class AssignmentService(
             note = note,
             submittedAt = submittedAt,
             updatedAt = updatedAt,
+            score = score,
+            feedback = feedback,
+            gradedAt = gradedAt,
         )
     }
 

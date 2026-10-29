@@ -46,6 +46,24 @@ class CoursesViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun changePassword(currentPassword: String, newPassword: String, onResult: (String?) -> Unit) {
+        if (currentPassword.isBlank() || newPassword.length < 8) {
+            onResult("请填写当前密码，新密码至少 8 位")
+            return
+        }
+        if (_state.value.busy) return
+        viewModelScope.launch {
+            _state.value = _state.value.copy(busy = true)
+            repository.changePassword(currentPassword, newPassword)
+                .onSuccess {
+                    _messages.emit("密码已修改")
+                    onResult(null)
+                }
+                .onFailure { onResult(it.message ?: "修改密码失败") }
+            _state.value = _state.value.copy(busy = false)
+        }
+    }
+
     fun createCourse(name: String, description: String, onResult: (String?) -> Unit) {
         if (name.isBlank() || description.isBlank()) {
             onResult("请完整填写课程名称和简介")

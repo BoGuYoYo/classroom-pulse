@@ -56,6 +56,7 @@ interface AttendanceRecordRepository : JpaRepository<AttendanceRecord, Long> {
 
 interface QuestionRepository : JpaRepository<Question, Long> {
     fun findByCourseIdOrderByCreatedAtDesc(courseId: Long): List<Question>
+    fun findByCourseIdAndDeletedAtIsNullOrderByCreatedAtDesc(courseId: Long): List<Question>
 }
 
 interface AnswerRepository : JpaRepository<Answer, Long> {

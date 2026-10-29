@@ -51,6 +51,7 @@ fun HomeScreen(
     var showCreateCourse by rememberSaveable { mutableStateOf(false) }
     var showJoinCourse by rememberSaveable { mutableStateOf(false) }
     var showLogoutConfirm by rememberSaveable { mutableStateOf(false) }
+    var showChangePassword by rememberSaveable { mutableStateOf(false) }
     var userMenuOpen by remember { mutableStateOf(false) }
     val clipboard = LocalClipboardManager.current
     val scope = rememberCoroutineScope()
@@ -99,6 +100,14 @@ fun HomeScreen(
                             )
                         }
                         HorizontalDivider(color = Line)
+                        DropdownMenuItem(
+                            text = { Text("修改密码", color = Ink) },
+                            leadingIcon = { Icon(Icons.Outlined.Key, null, tint = Teal) },
+                            onClick = {
+                                userMenuOpen = false
+                                showChangePassword = true
+                            },
+                        )
                         DropdownMenuItem(
                             text = { Text("退出登录", color = Danger) },
                             leadingIcon = {
@@ -255,6 +264,15 @@ fun HomeScreen(
             },
         )
     }
+    if (showChangePassword) {
+        ChangePasswordDialog(
+            onDismiss = { showChangePassword = false },
+            onSubmit = { current, newPassword, onResult ->
+                viewModel.changePassword(current, newPassword, onResult)
+            },
+        )
+    }
+
     if (showLogoutConfirm) {
         AlertDialog(
             onDismissRequest = { showLogoutConfirm = false },

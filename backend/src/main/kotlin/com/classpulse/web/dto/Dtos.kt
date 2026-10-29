@@ -38,6 +38,21 @@ data class LoginRequest(
     @field:NotBlank(message = "密码不能为空") val password: String,
 )
 
+data class ChangePasswordRequest(
+    @field:NotBlank(message = "当前密码不能为空")
+    val currentPassword: String,
+
+    @field:NotBlank(message = "新密码不能为空")
+    @field:Size(min = 8, max = 64, message = "新密码长度需在 8-64 之间")
+    val newPassword: String,
+)
+
+data class ResetStudentPasswordDto(
+    val studentId: Long,
+    val studentNo: String,
+    val temporaryPassword: String,
+)
+
 // ---------- Course ----------
 
 data class CreateCourseRequest(
@@ -56,6 +71,16 @@ data class JoinCourseRequest(
     val inviteCode: String,
 )
 
+data class UpdateCourseRequest(
+    @field:NotBlank(message = "课程名称不能为空")
+    @field:Size(max = 120, message = "课程名称不能超过 120 字")
+    val name: String,
+
+    @field:NotBlank(message = "课程简介不能为空")
+    @field:Size(max = 2000, message = "课程简介不能超过 2000 字")
+    val description: String,
+)
+
 data class CourseSummaryDto(
     val id: Long,
     val name: String,
@@ -65,6 +90,7 @@ data class CourseSummaryDto(
     val memberCount: Long,
     val createdAt: Instant,
     val joinedAt: Instant?,
+    val archived: Boolean,
 )
 
 data class MemberDto(
@@ -160,6 +186,22 @@ data class AnswerRequest(
     val answer: String,
 )
 
+data class UpdateQuestionRequest(
+    @field:NotBlank(message = "题干不能为空")
+    @field:Size(max = 2000, message = "题干不能超过 2000 字")
+    val prompt: String,
+
+    @field:Size(max = 6, message = "选项不能超过 6 个")
+    val options: List<String>? = null,
+
+    @field:NotBlank(message = "参考答案不能为空")
+    @field:Size(max = 500, message = "参考答案不能超过 500 字")
+    val correctAnswer: String,
+
+    @field:NotNull(message = "截止时间不能为空")
+    val deadlineAt: Instant?,
+)
+
 data class AnswerResultDto(
     val questionId: Long,
     val answer: String,
@@ -235,6 +277,19 @@ data class SubmissionDto(
     val note: String?,
     val submittedAt: Instant,
     val updatedAt: Instant,
+    val score: Int?,
+    val feedback: String?,
+    val gradedAt: Instant?,
+)
+
+data class GradeSubmissionRequest(
+    @field:NotNull(message = "分数不能为空")
+    @field:Min(value = 0, message = "分数不能低于 0")
+    @field:Max(value = 100, message = "分数不能高于 100")
+    val score: Int?,
+
+    @field:Size(max = 2000, message = "评语不能超过 2000 字")
+    val feedback: String? = null,
 )
 
 data class AssignmentDto(
@@ -326,4 +381,50 @@ data class CourseStatsDto(
     val questions: QuestionStatsSummaryDto,
     val assignments: AssignmentStatsDto,
     val summary: CourseSummaryStatsDto,
+)
+
+data class StudentAttendanceItemDto(
+    val id: Long,
+    val title: String,
+    val startsAt: Instant,
+    val checkedIn: Boolean,
+    val checkedAt: Instant?,
+)
+
+data class StudentQuestionItemDto(
+    val id: Long,
+    val prompt: String,
+    val type: QuestionType,
+    val answered: Boolean,
+    val correct: Boolean?,
+    val myAnswer: String?,
+)
+
+data class StudentAssignmentItemDto(
+    val id: Long,
+    val title: String,
+    val deadlineAt: Instant,
+    val submitted: Boolean,
+    val submittedAt: Instant?,
+    val updatedAt: Instant?,
+    val score: Int?,
+    val feedback: String?,
+)
+
+data class StudentCourseStatsDto(
+    val courseId: Long,
+    val courseName: String,
+    val attendance: List<StudentAttendanceItemDto>,
+    val attendanceCount: Long,
+    val attendanceTotal: Long,
+    val attendanceRate: Double,
+    val questions: List<StudentQuestionItemDto>,
+    val answeredCount: Long,
+    val correctCount: Long,
+    val correctnessRate: Double,
+    val assignments: List<StudentAssignmentItemDto>,
+    val submittedCount: Long,
+    val assignmentTotal: Long,
+    val gradedCount: Long,
+    val averageScore: Double?,
 )

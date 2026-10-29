@@ -31,6 +31,14 @@ data class LoginRequest(val username: String, val password: String)
 
 data class RegisterRequest(val studentNo: String, val name: String, val password: String)
 
+data class ChangePasswordRequest(val currentPassword: String, val newPassword: String)
+
+data class ResetStudentPassword(
+    val studentId: Long = 0,
+    val studentNo: String = "",
+    val temporaryPassword: String = "",
+)
+
 data class CourseSummary(
     val id: Long = 0,
     val name: String = "",
@@ -40,6 +48,7 @@ data class CourseSummary(
     val memberCount: Long = 0,
     val createdAt: String = "",
     val joinedAt: String? = null,
+    val archived: Boolean = false,
 )
 
 data class Member(
@@ -50,6 +59,8 @@ data class Member(
 )
 
 data class CreateCourseRequest(val name: String, val description: String)
+
+data class UpdateCourseRequest(val name: String, val description: String)
 
 data class JoinCourseRequest(val inviteCode: String)
 
@@ -125,6 +136,13 @@ data class CreateQuestionRequest(
     val deadlineAt: String,
 )
 
+data class UpdateQuestionRequest(
+    val prompt: String,
+    val options: List<String>?,
+    val correctAnswer: String,
+    val deadlineAt: String,
+)
+
 data class AnswerRequest(val answer: String)
 
 data class AnswerResult(
@@ -188,7 +206,12 @@ data class Submission(
     val note: String? = null,
     val submittedAt: String = "",
     val updatedAt: String = "",
+    val score: Int? = null,
+    val feedback: String? = null,
+    val gradedAt: String? = null,
 )
+
+data class GradeSubmissionRequest(val score: Int, val feedback: String? = null)
 
 data class StudentSubmission(
     val studentId: Long = 0,
@@ -264,4 +287,50 @@ data class CourseStats(
     val questions: QuestionStatsSummary = QuestionStatsSummary(),
     val assignments: AssignmentStats = AssignmentStats(),
     val summary: CourseSummaryStats = CourseSummaryStats(),
+)
+
+data class StudentAttendanceItem(
+    val id: Long = 0,
+    val title: String = "",
+    val startsAt: String = "",
+    val checkedIn: Boolean = false,
+    val checkedAt: String? = null,
+)
+
+data class StudentQuestionItem(
+    val id: Long = 0,
+    val prompt: String = "",
+    val type: String = "",
+    val answered: Boolean = false,
+    val correct: Boolean? = null,
+    val myAnswer: String? = null,
+)
+
+data class StudentAssignmentItem(
+    val id: Long = 0,
+    val title: String = "",
+    val deadlineAt: String = "",
+    val submitted: Boolean = false,
+    val submittedAt: String? = null,
+    val updatedAt: String? = null,
+    val score: Int? = null,
+    val feedback: String? = null,
+)
+
+data class StudentCourseStats(
+    val courseId: Long = 0,
+    val courseName: String = "",
+    val attendance: List<StudentAttendanceItem> = emptyList(),
+    val attendanceCount: Long = 0,
+    val attendanceTotal: Long = 0,
+    val attendanceRate: Double = 0.0,
+    val questions: List<StudentQuestionItem> = emptyList(),
+    val answeredCount: Long = 0,
+    val correctCount: Long = 0,
+    val correctnessRate: Double = 0.0,
+    val assignments: List<StudentAssignmentItem> = emptyList(),
+    val submittedCount: Long = 0,
+    val assignmentTotal: Long = 0,
+    val gradedCount: Long = 0,
+    val averageScore: Double? = null,
 )

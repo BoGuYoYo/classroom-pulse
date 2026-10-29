@@ -39,6 +39,12 @@ class AssignmentController(private val assignmentService: AssignmentService) {
     fun submissions(@PathVariable assignmentId: Long): ApiResponse<AssignmentSubmissionsDto> =
         ApiResponse.success(assignmentService.submissions(assignmentId))
 
+    @PutMapping("/submissions/{submissionId}/grade")
+    fun grade(
+        @PathVariable submissionId: Long,
+        @Valid @RequestBody request: GradeSubmissionRequest,
+    ): ApiResponse<SubmissionDto> = ApiResponse.success(assignmentService.gradeSubmission(submissionId, request))
+
     @GetMapping("/submissions/{submissionId}/image")
     fun image(@PathVariable submissionId: Long): ResponseEntity<Resource> {
         val stored = assignmentService.image(submissionId)

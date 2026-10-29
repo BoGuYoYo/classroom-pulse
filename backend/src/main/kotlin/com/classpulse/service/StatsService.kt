@@ -49,7 +49,7 @@ class StatsService(
                 } ?: "")
         }
 
-        val questionItems = questionRepository.findByCourseIdOrderByCreatedAtDesc(courseId).map { question ->
+        val questionItems = questionRepository.findByCourseIdAndDeletedAtIsNullOrderByCreatedAtDesc(courseId).map { question ->
             val id = requireNotNull(question.id)
             val submissions = answerRepository.countByQuestionId(id)
             val correct = answerRepository.countByQuestionIdAndIsCorrectTrue(id)
@@ -144,6 +144,78 @@ class StatsService(
                 overallRate = overallRate,
                 highlights = highlights,
             ),
+        )
+    }
+
+    @Transactional(readOnly = true)
+    fun studentCourseStats(courseId: Long): StudentCourseStatsDto {
+        val principal = accessGuard.requireStudent()
+        val course = accessGuard.studentCourse(courseId)
+        val sessions = attendanceSessionRepository.findByCourseIdOrderByStartsAtDesc(courseId)
+            .sortedBy { it.startsAt }
+        val attendance = sessions.map { session ->
+            val record = attendanceRecordRepository.findBySessionIdAndStudentId(
+                requireNotNull(session.id),
+                principal.id,
+            )
+            StudentAttendanceItemDto(
+                id = requireNotNull(session.id),
+                title = session.title,
+                startsAt = session.startsAt,
+                checkedIn = record != null,
+                checkedAt = record?.checkedAt,
+            )
+        }
+        val questions = questionRepository.findByCourseIdAndDeletedAtIsNullOrderByCreatedAtDesc(courseId)
+            .sortedBy { it.id }
+        val questionItems = questions.map { question ->
+            val answer = answerRepository.findByQuestionIdAndStudentId(requireNotNull(question.id), principal.id)
+            StudentQuestionItemDto(
+                id = requireNotNull(question.id),
+                prompt = question.prompt,
+                type = question.type,
+                answered = answer != null,
+                correct = answer?.isCorrect,
+                myAnswer = answer?.answerText,
+            )
+        }
+        val assignments = assignmentRepository.findByCourseIdOrderByCreatedAtDesc(courseId).sortedBy { it.id }
+        val assignmentItems = assignments.map { assignment ->
+            val submission = submissionRepository.findByAssignmentIdAndStudentId(
+                requireNotNull(assignment.id),
+                principal.id,
+            )
+            StudentAssignmentItemDto(
+                id = requireNotNull(assignment.id),
+                title = assignment.title,
+                deadlineAt = assignment.deadlineAt,
+                submitted = submission != null,
+                submittedAt = submission?.submittedAt,
+                updatedAt = submission?.updatedAt,
+                score = submission?.score,
+                feedback = submission?.feedback,
+            )
+        }
+        val answeredCount = questionItems.count { it.answered }.toLong()
+        val correctCount = questionItems.count { it.correct == true }.toLong()
+        val submittedCount = assignmentItems.count { it.submitted }.toLong()
+        val gradedScores = assignmentItems.mapNotNull { it.score }
+        return StudentCourseStatsDto(
+            courseId = courseId,
+            courseName = course.name,
+            attendance = attendance,
+            attendanceCount = attendance.count { it.checkedIn }.toLong(),
+            attendanceTotal = attendance.size.toLong(),
+            attendanceRate = rate(attendance.count { it.checkedIn }.toLong(), attendance.size.toLong()),
+            questions = questionItems,
+            answeredCount = answeredCount,
+            correctCount = correctCount,
+            correctnessRate = rate(correctCount, answeredCount),
+            assignments = assignmentItems,
+            submittedCount = submittedCount,
+            assignmentTotal = assignmentItems.size.toLong(),
+            gradedCount = gradedScores.size.toLong(),
+            averageScore = if (gradedScores.isEmpty()) null else gradedScores.average(),
         )
     }
 

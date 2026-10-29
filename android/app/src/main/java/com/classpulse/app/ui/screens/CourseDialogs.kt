@@ -737,7 +737,7 @@ private fun <T> SegmentedChoice(
 }
 
 @Composable
-private fun InlineDialogError(error: String?) {
+internal fun InlineDialogError(error: String?) {
     if (error != null) {
         Spacer(Modifier.height(12.dp))
         Row(

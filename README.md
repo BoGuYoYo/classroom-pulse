@@ -6,12 +6,13 @@ This public repository contains source code, generic deployment templates, and t
 
 ## Features
 
-- **Accounts and authorization**: student registration by student number, JWT authentication, BCrypt password hashing, pre-provisioned teacher accounts, and strict teacher/student/course ownership checks.
-- **Courses**: teachers create courses with unique invite codes and view rosters; students join by invite code and only see their own courses.
+- **Accounts and authorization**: student registration by student number, JWT authentication, BCrypt password hashing, self-service password change, teacher-assisted student password reset, pre-provisioned teacher accounts, and strict teacher/student/course ownership checks.
+- **Courses**: teachers create, rename, archive, soft-delete courses, rotate invite codes and manage rosters; students join by invite code and can leave a course.
 - **Attendance**: server-generated six-digit codes, validity windows, course-member checks, duplicate protection, and present/absent lists for teachers.
-- **Classroom questions**: single-choice, multiple-choice and fill-in-the-blank questions, per-question deadlines, server-side auto-grading (multiple-choice requires the exact correct set), one submission per student, and teacher analytics.
-- **Photo assignments**: camera/gallery upload, JPEG/PNG validation, 10 MB limit, replacement before deadline, private image access, and teacher submission review.
-- **Analytics**: attendance rate, question correctness, assignment submission rate, per-module conclusions, and in-app charts. Unanswered questions are excluded from the question average.
+- **Classroom questions**: single-choice, multiple-choice and fill-in-the-blank questions, per-question deadlines, editing, early close, soft delete, server-side auto-grading (multiple-choice requires the exact correct set), one submission per student, and teacher analytics.
+- **Photo assignments**: camera/gallery upload, JPEG/PNG validation, 10 MB limit, replacement before deadline, private image access, teacher review, scoring and written feedback.
+- **Analytics**: teacher course analytics plus a per-student summary of attendance, answered questions and assignment grades. Unanswered questions are excluded from the question average.
+- **Live updates**: the course workspace automatically refreshes every five seconds, so roster, attendance, answers, submissions and grades stay current.
 - **Data safety**: database/file consistency on assignment replacement and serialized per-student concurrent replacements.
 
 ## Architecture
