@@ -34,6 +34,10 @@ class User(
 
     @Column(name = "auth_version", nullable = false)
     var authVersion: Int = 0,
+
+    @Version
+    @Column(nullable = false)
+    var version: Long = 0,
 )
 
 @Entity
@@ -64,6 +68,10 @@ class Course(
 
     @Column(name = "deleted_at")
     var deletedAt: Instant? = null,
+
+    @Version
+    @Column(nullable = false)
+    var version: Long = 0,
 )
 
 @Entity
@@ -278,4 +286,51 @@ class Submission(
     @Version
     @Column(nullable = false)
     var version: Long = 0,
+)
+
+@Entity
+@Table(name = "admin_users")
+class AdminUser(
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    var id: Long? = null,
+
+    @Column(nullable = false, unique = true, length = 40)
+    var username: String = "",
+
+    @Column(nullable = false, length = 60)
+    var name: String = "",
+
+    @Column(name = "password_hash", nullable = false, length = 100)
+    var passwordHash: String = "",
+
+    @Column(name = "created_at", nullable = false)
+    var createdAt: Instant = Instant.now(),
+)
+
+@Entity
+@Table(name = "admin_sessions")
+class AdminSession(
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    var id: Long? = null,
+
+    @Column(name = "token_hash", nullable = false, unique = true, length = 64)
+    var tokenHash: String = "",
+
+    @Column(name = "csrf_token", nullable = false, length = 64)
+    var csrfToken: String = "",
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "admin_id", nullable = false)
+    var admin: AdminUser,
+
+    @Column(name = "created_at", nullable = false)
+    var createdAt: Instant = Instant.now(),
+
+    @Column(name = "expires_at", nullable = false)
+    var expiresAt: Instant = Instant.now(),
+
+    @Column(name = "last_seen_at", nullable = false)
+    var lastSeenAt: Instant = Instant.now(),
 )

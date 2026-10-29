@@ -2,7 +2,9 @@ package com.classpulse.service
 
 import com.classpulse.domain.QuestionType
 import com.classpulse.repository.*
+import com.classpulse.web.ApiException
 import com.classpulse.web.dto.*
+import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
@@ -11,6 +13,7 @@ import kotlin.math.round
 
 @Service
 class StatsService(
+    private val courseRepository: CourseRepository,
     private val courseMemberRepository: CourseMemberRepository,
     private val attendanceSessionRepository: AttendanceSessionRepository,
     private val attendanceRecordRepository: AttendanceRecordRepository,
@@ -155,12 +158,28 @@ class StatsService(
     fun studentCourseStats(courseId: Long): StudentCourseStatsDto {
         val principal = accessGuard.requireStudent()
         val course = accessGuard.studentCourse(courseId)
+        return buildStudentStats(courseId, principal.id, course)
+    }
+
+    @Transactional(readOnly = true)
+    fun studentCourseStatsForAdmin(courseId: Long, studentId: Long): StudentCourseStatsDto {
+        val course = courseRepository.findById(courseId).orElseThrow {
+            ApiException(HttpStatus.NOT_FOUND, "COURSE_NOT_FOUND", "课程不存在")
+        }
+        return buildStudentStats(courseId, studentId, course)
+    }
+
+    private fun buildStudentStats(
+        courseId: Long,
+        studentId: Long,
+        course: com.classpulse.domain.Course,
+    ): StudentCourseStatsDto {
         val sessions = attendanceSessionRepository.findByCourseIdOrderByStartsAtDesc(courseId)
             .sortedBy { it.startsAt }
         val attendance = sessions.map { session ->
             val record = attendanceRecordRepository.findBySessionIdAndStudentId(
                 requireNotNull(session.id),
-                principal.id,
+                studentId,
             )
             StudentAttendanceItemDto(
                 id = requireNotNull(session.id),
@@ -173,7 +192,7 @@ class StatsService(
         val questions = questionRepository.findByCourseIdAndDeletedAtIsNullOrderByCreatedAtDesc(courseId)
             .sortedBy { it.id }
         val questionItems = questions.map { question ->
-            val answer = answerRepository.findByQuestionIdAndStudentId(requireNotNull(question.id), principal.id)
+            val answer = answerRepository.findByQuestionIdAndStudentId(requireNotNull(question.id), studentId)
             StudentQuestionItemDto(
                 id = requireNotNull(question.id),
                 prompt = question.prompt,
@@ -187,7 +206,7 @@ class StatsService(
         val assignmentItems = assignments.map { assignment ->
             val submission = submissionRepository.findByAssignmentIdAndStudentId(
                 requireNotNull(assignment.id),
-                principal.id,
+                studentId,
             )
             StudentAssignmentItemDto(
                 id = requireNotNull(assignment.id),

@@ -101,6 +101,14 @@ cd ..
 
 Detailed instructions: [deployment and reproduction](docs/05-部署与复现.md).
 
+## Admin Console
+
+The backend also serves a separate Chinese desktop admin console at `/admin`. It uses an independent server-side admin session, HttpOnly cookie, CSRF protection, login throttling, and secure logout. Teacher and student JWTs cannot access `/api/admin/**`.
+
+Set `BOOTSTRAP_ADMIN_USERNAME` and `BOOTSTRAP_ADMIN_PASSWORD` for the first admin start, then remove the password from the environment. The console supports account and course lifecycle management, invitation resets, member removal, soft and permanent course deletion with impact previews, and read-only teaching data. It never edits questions, deadlines, scores, or feedback on behalf of teachers.
+
+The reverse proxy must forward `/admin` and `/api/admin` to the backend. The bundled Nginx template does this; a Caddy equivalent needs `handle /admin*` and the existing `/api/*` proxy.
+
 ## Documentation
 
 - [Requirements and design](docs/01-需求与设计.md)

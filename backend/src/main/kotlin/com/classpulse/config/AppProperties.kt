@@ -7,6 +7,7 @@ data class AppProperties(
     val jwt: Jwt = Jwt(),
     val upload: Upload = Upload(),
     val bootstrap: Bootstrap = Bootstrap(),
+    val admin: Admin = Admin(),
     val cors: Cors = Cors(),
 ) {
     data class Jwt(
@@ -24,6 +25,13 @@ data class AppProperties(
         val teacherUsername: String = "",
         val teacherPassword: String = "",
         val teacherName: String = "",
+    )
+
+    data class Admin(
+        val initialUsername: String = "",
+        val initialPassword: String = "",
+        val initialName: String = "系统管理员",
+        val sessionHours: Long = 8,
     )
 
     data class Cors(

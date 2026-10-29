@@ -39,6 +39,9 @@ class SecurityConfig(
                 auth.requestMatchers(
                     "/api/v1/auth/register",
                     "/api/v1/auth/login",
+                    "/api/admin/**",
+                    "/admin",
+                    "/admin/**",
                     "/actuator/health",
                     "/actuator/health/**",
                 ).permitAll()
