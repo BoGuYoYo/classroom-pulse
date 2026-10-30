@@ -103,7 +103,7 @@ Detailed instructions: [deployment and reproduction](docs/05-部署与复现.md)
 
 ## Admin Console
 
-The backend also serves a separate Chinese desktop admin console at `/admin`. It uses an independent server-side admin session, HttpOnly cookie, CSRF protection, login throttling, and secure logout. Teacher and student JWTs cannot access `/api/admin/**`.
+The backend serves two separate pages: `/admin/login` for administrator sign-in and `/admin/` for the management console. Visiting the console without a session redirects to the login page; visiting the login page with a valid session redirects to the console. The console uses an independent server-side admin session, HttpOnly cookie, CSRF protection, login throttling, and secure logout. Teacher and student JWTs cannot access `/api/admin/**`.
 
 Set `BOOTSTRAP_ADMIN_USERNAME` and `BOOTSTRAP_ADMIN_PASSWORD` for the first admin start, then remove the password from the environment. The console supports account and course lifecycle management, invitation resets, member removal, soft and permanent course deletion with impact previews, and read-only teaching data. It never edits questions, deadlines, scores, or feedback on behalf of teachers.
 

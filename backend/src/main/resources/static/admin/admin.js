@@ -47,7 +47,7 @@
     let payload = null;
     try { payload = await response.json(); } catch (_) { /* empty response */ }
     if (response.status === 401) {
-      showLogin("管理员登录已失效，请重新登录");
+      redirectToLogin();
       throw new Error(payload?.message || "登录已失效");
     }
     if (!response.ok) {
@@ -59,22 +59,17 @@
     return payload?.data;
   }
 
-  function showLogin(message = "") {
+  function redirectToLogin() {
     state.admin = null;
     state.csrf = null;
     if (state.timer) clearInterval(state.timer);
     state.timer = null;
-    $("#app").hidden = true;
-    $("#login-screen").hidden = false;
-    $("#login-error").hidden = !message;
-    $("#login-error").textContent = message;
-    $("#login-password").value = "";
+    window.location.replace("/admin/login");
   }
 
   async function showApp(session) {
     state.admin = session.admin;
     state.csrf = session.csrfToken;
-    $("#login-screen").hidden = true;
     $("#app").hidden = false;
     $("#admin-meta").innerHTML = `${esc(state.admin.name)}<br><span style="opacity:.55">${esc(state.admin.username)}</span>`;
     setRoute("dashboard");
@@ -87,30 +82,9 @@
       const session = await api("/api/admin/auth/session");
       await showApp(session);
     } catch (_) {
-      showLogin();
+      redirectToLogin();
     }
   }
-
-  $("#login-form").addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const button = $("#login-submit");
-    $("#login-error").hidden = true;
-    button.disabled = true;
-    button.textContent = "验证中…";
-    try {
-      const data = await api("/api/admin/auth/login", {
-        method: "POST",
-        body: { username: $("#login-username").value.trim(), password: $("#login-password").value },
-      });
-      await showApp(data);
-    } catch (error) {
-      $("#login-error").hidden = false;
-      $("#login-error").textContent = error.message;
-    } finally {
-      button.disabled = false;
-      button.textContent = "进入管理后台";
-    }
-  });
 
   function setRoute(route) {
     state.route = route;
@@ -747,7 +721,7 @@
   window.doRemoveMember = doRemoveMember;
   window.logout = async function () {
     try { await api("/api/admin/auth/logout", { method: "POST" }); } catch (_) { /* session may be gone */ }
-    showLogin("已安全退出");
+    redirectToLogin();
   };
 
   boot();
