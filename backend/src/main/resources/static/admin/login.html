@@ -4,32 +4,70 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex,nofollow">
+  <meta name="theme-color" content="#ffffff">
   <title>课脉 · 管理员登录</title>
   <link rel="stylesheet" href="/admin/admin.css">
 </head>
 <body class="login-body">
-  <div class="login-screen">
-    <div class="login-aside">
-      <div class="brand-mark">课脉<span>CLASS PULSE</span></div>
-      <div class="login-copy">
-        <div class="eyebrow">ADMIN CONSOLE</div>
-        <h1>把课堂，<br>照看得更清楚。</h1>
-        <p>账号、课程与成员管理集中在这里。教学内容保持只读，课堂由教师掌控。</p>
+  <div class="login-shell">
+    <section class="login-brand">
+      <div class="login-brand__top">
+        <div class="rail__brand">
+          <span class="brand-glyph" aria-hidden="true"></span>
+          <span class="brand-word">课脉<em>CLASS PULSE</em></span>
+        </div>
+        <span class="login-code">SECURE ACCESS // 01</span>
       </div>
-      <div class="login-rule"></div>
-      <p class="login-foot">管理员入口独立鉴权 · 会话受 CSRF 保护</p>
-    </div>
-    <div class="login-panel">
+
+      <div class="login-brand__body">
+        <div class="sec-title">
+          <div class="sec-title__bar">
+            <div class="sec-title__inner">
+              <span class="sec-title__arrow" aria-hidden="true"></span>
+              <span class="sec-title__en">ADMIN CONSOLE</span>
+            </div>
+          </div>
+          <h1 class="sec-title__cn">管理控制台</h1>
+        </div>
+
+        <p class="login-lede">账号、课程与成员关系集中在这里处理。教学内容保持只读，课堂节奏仍由教师掌握。</p>
+
+        <div class="login-tags">
+          <div class="ef-tag"><span class="ef-tag__label">鉴权</span><span class="ef-tag__value">管理员独立会话</span></div>
+          <div class="ef-tag"><span class="ef-tag__label">防护</span><span class="ef-tag__value">CSRF 令牌校验</span></div>
+          <div class="ef-tag"><span class="ef-tag__label">范围</span><span class="ef-tag__value">题目与评分只读</span></div>
+        </div>
+      </div>
+
+      <div class="login-brand__foot">
+        <div class="calibration" aria-hidden="true"></div>
+        <p class="login-foot">CLASS PULSE / ADMINISTRATION TERMINAL</p>
+      </div>
+
+      <span class="login-brand__side" aria-hidden="true">CLASS PULSE</span>
+    </section>
+
+    <section class="login-panel">
       <form id="login-form" class="login-form" autocomplete="off">
-        <div class="eyebrow">SECURE SIGN IN</div>
-        <h2>管理员登录</h2>
-        <p class="muted">使用服务器私有配置初始化的管理员账号。</p>
-        <label>管理员账号<input id="login-username" name="username" required autocomplete="username"></label>
-        <label>密码<input id="login-password" name="password" type="password" required autocomplete="current-password"></label>
+        <div class="login-form__head">
+          <span class="eyebrow">SECURE SIGN IN</span>
+          <h2>管理员登录</h2>
+          <p class="muted">使用服务器私有配置初始化的管理员账号。</p>
+        </div>
+
+        <label class="field">管理员账号
+          <input id="login-username" name="username" required autocomplete="username" spellcheck="false">
+        </label>
+        <label class="field">密码
+          <input id="login-password" name="password" type="password" required autocomplete="current-password">
+        </label>
+
         <div id="login-error" class="form-error" hidden></div>
+
         <button class="btn btn-primary btn-block" id="login-submit" type="submit">进入管理后台</button>
+        <p class="login-note">连续失败触发限流 · 会话 8 小时失效</p>
       </form>
-    </div>
+    </section>
   </div>
   <script src="/admin/login.js"></script>
 </body>

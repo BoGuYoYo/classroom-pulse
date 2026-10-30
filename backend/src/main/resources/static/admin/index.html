@@ -4,37 +4,62 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex,nofollow">
+  <meta name="theme-color" content="#ffffff">
   <title>课脉 · 管理后台</title>
   <link rel="stylesheet" href="/admin/admin.css">
 </head>
 <body>
   <div id="app" class="shell" hidden>
-    <aside class="sidebar">
-      <div class="brand-mark brand-mark-dark">课脉<span>CLASS PULSE</span></div>
-      <div class="sidebar-label">管理台</div>
-      <nav class="nav">
-        <button class="nav-item active" data-route="dashboard" onclick="setRoute('dashboard')"><span>01</span>总览</button>
-        <button class="nav-item" data-route="accounts" onclick="setRoute('accounts')"><span>02</span>账号</button>
-        <button class="nav-item" data-route="courses" onclick="setRoute('courses')"><span>03</span>课程</button>
+    <aside class="rail">
+      <div class="rail__brand">
+        <span class="brand-glyph" aria-hidden="true"></span>
+        <span class="brand-word">课脉<em>CLASS PULSE</em></span>
+      </div>
+
+      <div class="rail__tag">ADMIN CONSOLE</div>
+
+      <nav class="rail__nav" aria-label="管理导航">
+        <button class="nav-item active" data-route="dashboard" onclick="setRoute('dashboard')">
+          <span class="nav-index">01</span><span class="nav-label">总览</span>
+        </button>
+        <button class="nav-item" data-route="accounts" onclick="setRoute('accounts')">
+          <span class="nav-index">02</span><span class="nav-label">账号</span>
+        </button>
+        <button class="nav-item" data-route="courses" onclick="setRoute('courses')">
+          <span class="nav-index">03</span><span class="nav-label">课程</span>
+        </button>
       </nav>
-      <div class="sidebar-bottom">
+
+      <div class="rail__foot">
         <div id="admin-meta" class="admin-meta"></div>
-        <button class="text-btn" onclick="logout()">安全退出</button>
+        <button class="rail__logout" onclick="logout()">安全退出</button>
       </div>
     </aside>
+
     <main class="main">
       <header class="topbar">
-        <div>
-          <div id="page-kicker" class="eyebrow">OVERVIEW</div>
-          <h1 id="page-title">总览</h1>
-          <p id="page-sub" class="muted"></p>
+        <div class="sec-title">
+          <div class="sec-title__bar">
+            <div class="sec-title__inner">
+              <span class="sec-title__arrow" aria-hidden="true"></span>
+              <span class="sec-title__en" id="page-kicker">OVERVIEW</span>
+            </div>
+          </div>
+          <h1 class="sec-title__cn" id="page-title">总览</h1>
+          <p class="sec-title__sub" id="page-sub"></p>
         </div>
-        <div class="topbar-actions">
+        <div class="topbar__tools">
           <span id="sync-state" class="sync-state">自动刷新 · 5s</span>
-          <button class="icon-btn" id="refresh-btn" title="立即刷新" onclick="refreshRoute(true)">↻</button>
+          <button class="btn-refresh" id="refresh-btn" type="button" title="立即刷新" aria-label="立即刷新" onclick="refreshRoute(true)">↻</button>
         </div>
       </header>
+
       <section id="content" class="content"></section>
+
+      <footer class="main__foot">
+        <span>CLASS PULSE / ADMIN TERMINAL</span>
+        <span>教学内容只读 · 会话受 CSRF 保护</span>
+      </footer>
     </main>
   </div>
 

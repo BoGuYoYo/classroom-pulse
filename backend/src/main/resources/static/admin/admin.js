@@ -142,28 +142,61 @@
 
   async function loadDashboard() {
     state.summary = await api("/api/admin/summary");
+    const s = state.summary;
+    const normalCourses = Math.max(0, s.courses - s.archivedCourses - s.deletedCourses);
     content().innerHTML = `
       <div class="cards">
-        ${stat("教师账号", state.summary.teachers, "可任课与建课", "accent")}
-        ${stat("学生账号", state.summary.students, "可加入课程")}
-        ${stat("课程总数", state.summary.courses, "包含归档与软删除")}
-        ${stat("归档课程", state.summary.archivedCourses, "只读课程")}
-        ${stat("软删除课程", state.summary.deletedCourses, "保留历史，可永久删除")}
+        ${stat("教师账号", s.teachers, "可任课与建课", "accent")}
+        ${stat("学生账号", s.students, "可加入课程")}
+        ${stat("课程总数", s.courses, "包含归档与软删除")}
+        ${stat("归档课程", s.archivedCourses, "只读课程")}
+        ${stat("软删除课程", s.deletedCourses, "保留历史，可永久删除")}
       </div>
       <div class="panel">
         <div class="panel-head"><h2>管理入口</h2><span class="muted">只读教学数据</span></div>
         <div class="panel-body">
           <div class="detail-grid">
-            <button class="mini-card" style="text-align:left;border:1px solid var(--line)" onclick="setRoute('accounts')">
+            <button class="mini-card mini-card--link" onclick="setRoute('accounts')">
               <div class="k">账号管理</div><div class="v">教师 / 学生</div><div class="muted">搜索、创建、编辑、重置密码与删除</div>
             </button>
-            <button class="mini-card" style="text-align:left;border:1px solid var(--line)" onclick="setRoute('courses')">
+            <button class="mini-card mini-card--link" onclick="setRoute('courses')">
               <div class="k">课程管理</div><div class="v">状态与成员</div><div class="muted">归档、邀请码、成员与只读教学数据</div>
             </button>
           </div>
           <p class="form-note">管理员不代替教师编辑题目、提前截止题目或修改评分。所有教学内容以只读方式展示。</p>
         </div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><h2>构成比例</h2><span class="muted">实时汇总</span></div>
+        <div class="panel-body">
+          <div class="meters">
+            ${meter("账号构成", s.teachers + s.students, [
+              ["教师", s.teachers, "seg-ink"],
+              ["学生", s.students, "seg-steel"],
+            ])}
+            ${meter("课程状态", s.courses, [
+              ["正常", normalCourses, "seg-ink"],
+              ["已归档", s.archivedCourses, "seg-yellow"],
+              ["软删除", s.deletedCourses, "seg-gray"],
+            ])}
+          </div>
+        </div>
       </div>`;
+  }
+
+  function meter(title, total, segments) {
+    const sum = segments.reduce((acc, item) => acc + item[1], 0) || 1;
+    const bars = segments
+      .map(([, value, cls]) => `<i class="${cls}" style="width:${(value / sum * 100).toFixed(2)}%"></i>`)
+      .join("");
+    const legend = segments
+      .map(([label, value, cls]) => `<span><i class="${cls}"></i>${esc(label)} ${value}</span>`)
+      .join("");
+    return `<div class="meter">
+      <div class="meter__head"><span>${esc(title)}</span><b>${esc(total)}</b></div>
+      <div class="meter__bar">${bars}</div>
+      <div class="meter__legend">${legend}</div>
+    </div>`;
   }
 
   function stat(label, value, hint, className = "") {
